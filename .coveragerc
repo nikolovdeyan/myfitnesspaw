@@ -1,5 +1,5 @@
 [run]
-source = best_practices
+source = flows
 
 [report]
 exclude_lines =

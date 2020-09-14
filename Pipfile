@@ -13,6 +13,10 @@ pytest-cov = "*"
 pre-commit = "*"
 
 [packages]
+jsonpickle = "*"
+myfitnesspal = "*"
+prefect = "*"
+myfitnesspaw = {editable = true, path = "."}
 
 [requires]
 python_version = "3.8"
