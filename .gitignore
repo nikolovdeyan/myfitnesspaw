@@ -1,5 +1,6 @@
-# Secrets directory
+# Secrets and database directories
 secrets/
+database/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

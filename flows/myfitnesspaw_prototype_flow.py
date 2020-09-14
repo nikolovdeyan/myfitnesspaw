@@ -136,7 +136,6 @@ def prepare_list_of_dates_to_scrape(from_date, to_date):
     name="Get day record json from date (myfitnesspal)",
     timeout=5,
     max_retries=10,
-    cache_for=datetime.timedelta(hours=1),
     retry_delay=timedelta(seconds=10),
 )
 def get_myfitnesspal_day_serialized(username, password, date):
