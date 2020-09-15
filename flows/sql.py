@@ -99,3 +99,29 @@ insert_or_replace_rawdaydata_record = """
 INSERT OR REPLACE INTO RawDayData(userid, date, rawdaydata)
 VALUES (?, ?, ?)
 """
+
+insert_meal_record = """
+INSERT INTO Meals(userid, date, name, calories, carbs, fat, protein, sodium, sugar)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+insert_mealentry_record = """
+INSERT INTO MealEntries(userid, date, meal_name, short_name, quantity, unit,
+ calories, carbs, fat, protein, sodium, sugar)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+insert_cardioexercises_command = """
+INSERT INTO CardioExercises(userid, date, exercise_name, minutes, calories_burned)
+VALUES (?, ?, ?, ?, ?)
+"""
+
+insert_strengthexercises_command = """
+INSERT INTO StrengthExercises(userid, date, exercise_name, sets, reps, weight)
+VALUES (?, ?, ?, ?, ?, ?)
+"""
+
+insert_measurements_command = """
+INSERT INTO Measurements(userid, measure_name, date, value)
+VALUES (?, ?, ?, ?)
+"""
