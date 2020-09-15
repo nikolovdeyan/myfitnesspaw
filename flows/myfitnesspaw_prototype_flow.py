@@ -5,163 +5,11 @@ from datetime import timedelta
 
 import jsonpickle
 import myfitnesspal
-import prefect
-from prefect import Flow, Parameter, task, unmapped
+from prefect import Flow, task
 from prefect.engine.state import Failed
-from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.utilities.notifications import slack_notifier
 
 handler = slack_notifier(only_states=[Failed])  # we can call it early
-
-create_raw_day_table_command = """
-CREATE TABLE IF NOT EXISTS RawDayData (
-  userid text NOT NULL,
-  date text NOT NULL,
-  rawdaydata json,
-  PRIMARY KEY(userid, date)
-);
-"""
-
-create_meals_table_command = """
-CREATE TABLE IF NOT EXISTS Meals (
-  userid text NOT NULL,
-  date text NOT NULL,
-  name text NOT NULL,
-  calories INTEGER,
-  carbs INTEGER,
-  fat INTEGER,
-  protein INTEGER,
-  sodium INTEGER,
-  sugar INTEGER,
-  PRIMARY KEY(userid, date, name),
-  CONSTRAINT fk_rawdaydata
-    FOREIGN KEY (userid, date)
-    REFERENCES RawDayData(userid, date)
-    ON DELETE CASCADE
-);
-"""
-
-create_mealentries_table_command = """
-CREATE TABLE IF NOT EXISTS MealEntries (
-  id integer PRIMARY KEY AUTOINCREMENT,
-  userid text NOT NULL,
-  date text NOT NULL,
-  meal_name text NOT NULL,
-  short_name text NOT NULL,
-  quantity REAL NOT NULL,
-  unit text NOT NULL,
-  calories INTEGER,
-  carbs INTEGER,
-  fat INTEGER,
-  protein INTEGER,
-  sodium INTEGER,
-  sugar INTEGER,
-  CONSTRAINT fk_mealentries
-    FOREIGN KEY(userid, date, meal_name)
-    REFERENCES Meals(userid, date, name)
-    ON DELETE CASCADE
-);
-"""
-
-create_cardioexercises_table_command = """
-CREATE TABLE IF NOT EXISTS CardioExercises (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  userid TEXT NOT NULL,
-  date TEXT NOT NULL,
-  exercise_name TEXT NOT NULL,
-  minutes REAL,
-  calories_burned REAL,
-  CONSTRAINT fk_rawdaydata
-    FOREIGN KEY(userid, date)
-    REFERENCES RawDayData(userid, date)
-    ON DELETE CASCADE
-);
-"""
-
-create_strengthexercises_table_command = """
-CREATE TABLE IF NOT EXISTS StrengthExercises (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  userid TEXT NOT NULL,
-  date TEXT NOT NULL,
-  exercise_name TEXT NOT NULL,
-  sets REAL,
-  reps REAL,
-  weight REAL,
-  CONSTRAINT fk_rawdaydata
-    FOREIGN KEY(userid, date)
-    REFERENCES RawDayData(userid, date)
-    ON DELETE CASCADE
-);
-"""
-
-create_measurements_table_command = """
-CREATE TABLE IF NOT EXISTS Measurements (
-  userid text NOT NULL,
-  date text NOT NULL,
-  measure_name text NOT NULL,
-  value REAL NOT NULL,
-  PRIMARY KEY(userid, date, measure_name)
-);
-"""
-
-create_mfp_database_script = f"""
-{create_raw_day_table_command}
-
-{create_meals_table_command}
-
-{create_mealentries_table_command}
-
-{create_cardioexercises_table_command}
-
-{create_strengthexercises_table_command}
-
-{create_measurements_table_command}
-"""
-
-create_mfp_database = SQLiteScript(
-    name="Create MFP DB (if not existing)",
-    db="mfp.db",
-    script=create_mfp_database_script,
-)
-
-
-@task(name="Prepare list of dates to scrape")
-def prepare_list_of_dates_to_scrape(from_date, to_date):
-    delta_days = (to_date - from_date).days
-    #  including both the starting and ending date
-    return [from_date + timedelta(days=i) for i in range(delta_days + 1)]
-
-
-@task(
-    name="Get day record json from date (myfitnesspal)",
-    timeout=5,
-    max_retries=10,
-    retry_delay=timedelta(seconds=10),
-)
-def get_myfitnesspal_day_serialized(username, password, date):
-    client = myfitnesspal.Client(username=username, password=password)
-    day = client.get_date(date)
-    day.username = username
-    day._username = username
-    day._exercises = day.exercises
-    day._water = day.water
-    day._totals = day.totals
-    day._notes = day.notes if day.notes else ""
-    day_json = jsonpickle.encode(day)
-    return (username, date, day_json)
-
-
-@task(name="Get day record json from date (mfp database)")
-def get_db_record_day_serialized(username, date):
-    sql_stmt = """
-    SELECT rawdaydata FROM RawDayData
-    WHERE userid=? AND date=?
-    """
-    with closing(sqlite3.connect("mfp.db")) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute(sql_stmt, (username, date))
-        result = cursor.fetchone()
-        day_json = result[0] if result else None
-    return (username, date, day_json)
 
 
 @task(
@@ -249,14 +97,6 @@ def extract_strength_exercises_from_day(day_data):
         )
         exercises_list.append(exercise_entry)
     return exercises_list
-
-
-@task(name="Filter records to insert or replace")
-def filter_records_to_upsert(myfitnesspal_data, local_data):
-    logger = prefect.context.get("logger")
-    records_to_upsert = [t for t in myfitnesspal_data if t not in local_data]
-    logger.info(f"Records to Insert/Update: {len(records_to_upsert)}")
-    return records_to_upsert
 
 
 @task(name="Prepare deserialized days list")
@@ -348,46 +188,10 @@ def mfp_insert_measurements(measurements):
 
 
 with Flow("Myfitnesspal Prototype Flow") as flow:
-    #  Gather required parameters at runtime:
-    from_date = Parameter(name="from_date", required=True)
-    to_date = Parameter(name="to_date", required=True)
-    username = Parameter(name="username", required=True)
-    password = Parameter(name="password", required=True)
-
-    #  Prepeare a list of dates to be scraped:
-    dates_to_scrape = prepare_list_of_dates_to_scrape(
-        from_date, to_date, upstream_tasks=[create_mfp_database]
-    )
-
-    #  Get a serialized day record for each date in the list:
-    mfp_raw_days_data = get_myfitnesspal_day_serialized.map(
-        date=dates_to_scrape,
-        username=unmapped(username),
-        password=unmapped(password),
-    )
-
-    #  Get the serialized day records already existing in the databse for
-    #  the time period:
-    #  TODO: Rewrite this without the map -> query the database with a single action for
-    #        the complete dates list.
-    db_raw_days_data = get_db_record_day_serialized.map(
-        date=dates_to_scrape, username=unmapped(username)
-    )
-
-    #  Compare the existing records with the ones just scraped:
-    #  Check also FilterTask:
-    #  https://docs.prefect.io/api/latest/tasks/control_flow.html#filtertask
-    #    true_branch = ActionIfTrue()
-    #    false_branch = ActionIfFalse()
-    #    ifelse(CheckCondition(), true_branch, false_branch)
-    #    merged_result = merge(true_branch, false_branch)
-    days_to_upsert = filter_records_to_upsert(mfp_raw_days_data, db_raw_days_data)
-
-    #  Insert the raw data dump as a serialized json in the databse:
-    r1 = mfp_insert_raw_day_records(days_to_upsert)
-
     #  The new/changed days_to_usert can now be deserialized and used to populate
     #  the report tables:
+    r1 = None
+    days_to_upsert = None
     days_list = deserialize_records_to_process(days_to_upsert, upstream_tasks=[r1])
 
     #  Prepare a list of all meals in the period from the days_list:

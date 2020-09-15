@@ -11,6 +11,7 @@ mypy = "*"
 pytest = "*"
 pytest-cov = "*"
 pre-commit = "*"
+prefect = {extras = ["dev"], version = "*"}
 
 [packages]
 jsonpickle = "*"

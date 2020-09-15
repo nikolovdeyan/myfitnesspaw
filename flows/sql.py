@@ -90,3 +90,12 @@ CREATE TABLE IF NOT EXISTS Measurements (
   PRIMARY KEY(userid, date, measure_name)
 );
 """
+
+select_rawdaydata_record = """
+SELECT rawdaydata FROM RawDayData WHERE userid=? AND date=?
+"""
+
+insert_or_replace_rawdaydata_record = """
+INSERT OR REPLACE INTO RawDayData(userid, date, rawdaydata)
+VALUES (?, ?, ?)
+"""
