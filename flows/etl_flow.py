@@ -61,27 +61,6 @@ def get_myfitnesspal_day(username, password, date):
     return day
 
 
-@task(
-    name="Get Measure Records for Dates <- (myfitnesspal)",
-    timeout=5,
-    max_retries=10,
-    retry_delay=timedelta(seconds=10),
-)
-def get_myfitnesspal_measure_records(username, password, from_date, to_date, measure):
-    client = myfitnesspal.Client(username=username, password=password)
-    # TODO: Fix this logic
-    try:
-        measure_response = client.get_measurements(measure, from_date, to_date)
-    except ValueError as e:
-        if str(e) == f"Measurement '{measure}' does not exist.":
-            return []
-        else:
-            raise e
-    measure_records = list(measure_response.items())  # convert to a list of tuples
-    measure_records = [(username, measure) + t for t in measure_records]
-    return measure_records
-
-
 @task(name="Serialize Day Records List")
 def serialize_myfitnesspal_days(myfitnesspal_days):
     """Prepare a list of Day records for database load."""
@@ -97,30 +76,6 @@ def filter_new_or_changed_records(extracted_records, local_records):
     records_to_upsert = [t for t in extracted_records if t not in local_records]
     logger.info(f"Records to Insert/Update: {len(records_to_upsert)}")
     return records_to_upsert
-
-
-@task(name="Get Raw Day Records for Dates <- (MyFitnessPaw)")
-def mfp_select_raw_days(username, dates):
-    mfp_existing_days = []
-    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
-        conn.cursor()
-    ) as cursor:
-        for date in dates:
-            cursor.execute(sql.select_rawdaydata_record, (username, date))
-            result = cursor.fetchone()
-            day_json = result[0] if result else None
-            day_record = (username, date, day_json)
-            mfp_existing_days.append(day_record)
-    return mfp_existing_days
-
-
-@task(name="Load Raw Day Records -> (MyFitnessPaw)")
-def mfp_insert_raw_days(days_values):
-    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
-        conn.cursor()
-    ) as cursor:
-        cursor.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
-        conn.commit()
 
 
 @task(name="Deserialize Day Records to Process")
@@ -195,7 +150,7 @@ def extract_cardio_exercises_from_days(days):
                 record.nutrition_information.get("minutes", None),
                 record.nutrition_information.get("calories burned", None),
             )
-        cardio_list.append(exercise_entry)
+            cardio_list.append(exercise_entry)
     return cardio_list
 
 
@@ -216,11 +171,38 @@ def extract_strength_exercises_from_days(days):
     return strength_list
 
 
+@task(name="Get Raw Day Records for Dates <- (MyFitnessPaw)")
+def mfp_select_raw_days(username, dates):
+    mfp_existing_days = []
+    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
+        conn.cursor()
+    ) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
+        for date in dates:
+            cursor.execute(sql.select_rawdaydata_record, (username, date))
+            result = cursor.fetchone()
+            day_json = result[0] if result else None
+            day_record = (username, date, day_json)
+            mfp_existing_days.append(day_record)
+    return mfp_existing_days
+
+
+@task(name="Load Raw Day Records -> (MyFitnessPaw)")
+def mfp_insert_raw_days(days_values):
+    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
+        conn.cursor()
+    ) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
+        cursor.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
+        conn.commit()
+
+
 @task(name="Load Meal Records -> (MyFitnessPaw)")
 def mfp_insert_meals(meals_values):
     with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
         conn.cursor()
     ) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_meal_record, meals_values)
         conn.commit()
 
@@ -230,6 +212,7 @@ def mfp_insert_mealentries(mealentries_values):
     with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
         conn.cursor()
     ) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_mealentry_record, mealentries_values)
         conn.commit()
 
@@ -239,6 +222,7 @@ def mfp_insert_cardio_exercises(cardio_list):
     with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
         conn.cursor()
     ) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_cardioexercises_command, cardio_list)
         conn.commit()
 
@@ -248,21 +232,15 @@ def mfp_insert_strength_exercises(strength_list):
     with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
         conn.cursor()
     ) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_strengthexercises_command, strength_list)
-        conn.commit()
-
-
-@task(name="Load Measurement Records -> (MyFitnessPaw)")
-def mfp_insert_measurements(measurements):
-    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
-        conn.cursor()
-    ) as cursor:
-        cursor.executemany(sql.insert_measurements_command, measurements)
         conn.commit()
 
 
 with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Gather required parameters/secrets
+    username = EnvVarSecret("MYFITNESSPAW_USERNAME", raise_if_missing=True)
+    password = EnvVarSecret("MYFITNESSPAW_PASSWORD", raise_if_missing=True)
     from_date = Parameter(
         name="from_date",
         required=False,
@@ -273,8 +251,6 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
         required=False,
         default=datetime.date.today() - timedelta(days=1),
     )
-    username = EnvVarSecret("MYFITNESSPAW_USERNAME", raise_if_missing=True)
-    password = EnvVarSecret("MYFITNESSPAW_PASSWORD", raise_if_missing=True)
 
     #  Prepeare a sequence of dates to be scraped:
     dates_to_extract = generate_dates_to_extract(from_date, to_date)
@@ -338,26 +314,12 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
         strength_list=strength_exercises_to_process,
     )
 
-    #  Notes, Water, Goals are not implemented yet
-
-    measurements_list = get_myfitnesspal_measure_records.map(
-        measure=["Weight", "Height"],  # TODO: Parameterize
-        username=unmapped(username),
-        password=unmapped(password),
-        from_date=unmapped(from_date),
-        to_date=unmapped(to_date),
-        upstream_tasks=[],  # TODO: Add
-    )
-
-    #  Insert gathered measurements
-    measurements_load_state = mfp_insert_measurements(measurements_list)
-
 
 if __name__ == "__main__":
     flow.visualize(filename="mfp_etl_dag", format="png")
     # flow.register(project_name="MFP Prototype")
     flow_state = flow.run(
-        from_date=datetime.date(2020, 9, 10),
+        from_date=datetime.date(2020, 9, 9),
         to_date=datetime.date(2020, 9, 10),
     )
     # flow.visualize(
