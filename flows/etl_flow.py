@@ -33,9 +33,21 @@ create_mfp_database_script = f"""
 
 create_mfp_database = SQLiteScript(
     name="Create MyFitnessPaw DB (if not existing)",
-    db="database/mfp_db.sqlite",
     script=create_mfp_database_script,
 )
+
+
+class MaterializedDay:
+    """A class to hold the properties from myfitnesspal that we are working with."""
+
+    def __init__(self, username, date, meals, exercises, goals, notes, water):
+        self.username = username
+        self.date = date
+        self.meals = meals
+        self.exercises = exercises
+        self.goals = goals
+        self.notes = notes
+        self.water = water
 
 
 @task(name="Prepare Dates Sequence to Extract")
@@ -53,11 +65,18 @@ def generate_dates_to_extract(from_date, to_date):
 )
 def get_myfitnesspal_day(username, password, date):
     client = myfitnesspal.Client(username=username, password=password)
-    day = client.get_date(date)
-    day._username = username  # add username to the day object
-    day._exercises = day.exercises
-    day._water = day.water
-    day._notes = day.notes if day.notes else ""
+    myfitnesspal_day = client.get_date(date)
+    #  Materialize lazy loading properties:
+    day = MaterializedDay(
+        username=username,
+        date=date,
+        # TODO: meals=[meal for meal in myfitnesspal_day.meals if meal]
+        meals=myfitnesspal_day.meals,
+        exercises=myfitnesspal_day.exercises,
+        goals=myfitnesspal_day.goals,
+        notes=myfitnesspal_day.notes,
+        water=myfitnesspal_day.water,
+    )
     return day
 
 
@@ -65,7 +84,7 @@ def get_myfitnesspal_day(username, password, date):
 def serialize_myfitnesspal_days(myfitnesspal_days):
     """Prepare a list of Day records for database load."""
     days_values = [
-        (day._username, day._date, jsonpickle.encode(day)) for day in myfitnesspal_days
+        (day.username, day.date, jsonpickle.encode(day)) for day in myfitnesspal_days
     ]
     return days_values
 
@@ -80,8 +99,7 @@ def filter_new_or_changed_records(extracted_records, local_records):
 
 @task(name="Deserialize Day Records to Process")
 def deserialize_records_to_process(serialized_days):
-    result = [jsonpickle.decode(day_json[2]) for day_json in serialized_days]
-    return result
+    return [jsonpickle.decode(day_json[2]) for day_json in serialized_days]
 
 
 @task(name="Extract Meals from Day Sequence")
@@ -91,10 +109,9 @@ def extract_meals_from_days(days):
             if not meal:  # TODO: ?
                 continue
             else:
-                meal.username = day._username
-                meal.date = day._date
-    meals = [meal for day in days for meal in day.meals if meal]
-    return meals
+                meal.username = day.username
+                meal.date = day.date
+    return [meal for day in days for meal in day.meals if meal]
 
 
 @task(name="Extract Meal Records from Meal Sequence")
@@ -117,66 +134,61 @@ def extract_meal_records_from_meals(meals):
 
 @task(name="Extract MealEntry Records from Meal Sequence")
 def extract_mealentry_records_from_meals(meals):
-    mealentries = []
-    for meal in meals:
-        for entry in meal.entries:
-            mealentry = (
-                meal.username,
-                meal.date,
-                meal.name,
-                entry.short_name,
-                entry.quantity,
-                entry.unit,
-                entry.totals.get("calories", None),
-                entry.totals.get("carbohydrates", None),
-                entry.totals.get("fat", None),
-                entry.totals.get("protein", None),
-                entry.totals.get("sodium", None),
-                entry.totals.get("sugar", None),
-            )
-            mealentries.append(mealentry)
-    return mealentries
+    return [
+        (
+            meal.username,
+            meal.date,
+            meal.name,
+            entry.short_name,
+            entry.quantity,
+            entry.unit,
+            entry.totals.get("calories", None),
+            entry.totals.get("carbohydrates", None),
+            entry.totals.get("fat", None),
+            entry.totals.get("protein", None),
+            entry.totals.get("sodium", None),
+            entry.totals.get("sugar", None),
+        )
+        for meal in meals
+        for entry in meal.entries
+    ]
 
 
 @task(name="Extract Cardio Exercises from Day Sequence")
 def extract_cardio_exercises_from_days(days):
-    cardio_list = []
-    for day in days:
-        for record in day._exercises[0]:
-            exercise_entry = (
-                day._username,
-                day._date,
-                record.name,
-                record.nutrition_information.get("minutes", None),
-                record.nutrition_information.get("calories burned", None),
-            )
-            cardio_list.append(exercise_entry)
-    return cardio_list
+    return [
+        (
+            day.username,
+            day.date,
+            record.name,
+            record.nutrition_information.get("minutes", None),
+            record.nutrition_information.get("calories burned", None),
+        )
+        for day in days
+        for record in day.exercises[0]
+    ]
 
 
 @task(name="Extract Strength Exercises from Days Sequence")
 def extract_strength_exercises_from_days(days):
-    strength_list = []
-    for day in days:
-        for record in day._exercises[1]:
-            exercise_entry = (
-                day._username,
-                day._date,
-                record.name,
-                record.nutrition_information.get("sets", None),
-                record.nutrition_information.get("reps/set", None),
-                record.nutrition_information.get("weight/set", None),
-            )
-            strength_list.append(exercise_entry)
-    return strength_list
+    return [
+        (
+            day.username,
+            day.date,
+            record.name,
+            record.nutrition_information.get("sets", None),
+            record.nutrition_information.get("reps/set", None),
+            record.nutrition_information.get("weight/set", None),
+        )
+        for day in days
+        for record in day.exercises[1]
+    ]
 
 
 @task(name="Get Raw Day Records for Dates <- (MyFitnessPaw)")
-def mfp_select_raw_days(username, dates):
+def mfp_select_raw_days(username, dates, db):
     mfp_existing_days = []
-    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
-        conn.cursor()
-    ) as cursor:
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         for date in dates:
             cursor.execute(sql.select_rawdaydata_record, (username, date))
@@ -188,54 +200,46 @@ def mfp_select_raw_days(username, dates):
 
 
 @task(name="Load Raw Day Records -> (MyFitnessPaw)")
-def mfp_insert_raw_days(days_values):
-    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
-        conn.cursor()
-    ) as cursor:
+def mfp_insert_raw_days(days_values, db):
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
         conn.commit()
 
 
 @task(name="Load Meal Records -> (MyFitnessPaw)")
-def mfp_insert_meals(meals_values):
-    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
-        conn.cursor()
-    ) as cursor:
+def mfp_insert_meals(meals_values, db):
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_meal_record, meals_values)
         conn.commit()
 
 
 @task(name="Load MealEntry Records -> (MyFitnessPaw)")
-def mfp_insert_mealentries(mealentries_values):
-    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
-        conn.cursor()
-    ) as cursor:
+def mfp_insert_mealentries(mealentries_values, db):
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_mealentry_record, mealentries_values)
         conn.commit()
 
 
 @task(name="Load CardioExercises Records -> (MyFitnessPaw)")
-def mfp_insert_cardio_exercises(cardio_list):
-    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
-        conn.cursor()
-    ) as cursor:
+def mfp_insert_cardio_exercises(cardio_list, db):
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_cardioexercises_command, cardio_list)
         conn.commit()
 
 
 @task(name="Load StrengthExercises Records -> (MyFitnessPaw)")
-def mfp_insert_strength_exercises(strength_list):
-    with closing(sqlite3.connect("database/mfp_db.sqlite")) as conn, closing(
-        conn.cursor()
-    ) as cursor:
+def mfp_insert_strength_exercises(strength_list, db):
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_strengthexercises_command, strength_list)
         conn.commit()
 
+
+# schedule = IntervalSchedule(interval=timedelta(minutes=2))
 
 with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Gather required parameters/secrets
@@ -251,6 +255,12 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
         required=False,
         default=datetime.date.today() - timedelta(days=1),
     )
+    sqlite_db_location = Parameter(
+        name="sqlite_db_location", required=False, default="database/mfp_db.sqlite"
+    )
+
+    #  Pass connection string to database creation task at runtime:
+    database_exists = create_mfp_database(db=sqlite_db_location)
 
     #  Prepeare a sequence of dates to be scraped:
     dates_to_extract = generate_dates_to_extract(from_date, to_date)
@@ -268,7 +278,10 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     #  We need to compare the extracted days with what we already have in the database
     #  for this username and date. Select the records applicable:
     mfp_existing_days = mfp_select_raw_days(
-        username=username, dates=dates_to_extract, upstream_tasks=[create_mfp_database]
+        db=sqlite_db_location,
+        username=username,
+        dates=dates_to_extract,
+        upstream_tasks=[database_exists],
     )
 
     #  Compare the existing records with the ones just scraped:
@@ -279,7 +292,9 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     )
 
     #  Load the transformed sequence of raw myfitnesspal days to mfp database:
-    raw_days_load_state = mfp_insert_raw_days(serialized_days_to_process)
+    raw_days_load_state = mfp_insert_raw_days(
+        serialized_days_to_process, sqlite_db_location
+    )
 
     #  The sequence of filtered records to process will be deserialized before
     #  populating the reporting table to make extracting the information easier.
@@ -297,8 +312,10 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     mealentries_records = extract_mealentry_records_from_meals(meals_to_process)
 
     #  Load meals and mealentries into their respective tables:
-    meals_load_state = mfp_insert_meals(meals_records)
-    mealentries_load_state = mfp_insert_mealentries(mealentries_records)
+    meals_load_state = mfp_insert_meals(meals_records, db=sqlite_db_location)
+    mealentries_load_state = mfp_insert_mealentries(
+        mealentries_records, db=sqlite_db_location
+    )
 
     #  Extract exercises from the day records:
     cardio_exercises_to_process = extract_cardio_exercises_from_days(days_to_process)
@@ -309,19 +326,27 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Load exercises into their respective tables:
     cardio_exercises_load_state = mfp_insert_cardio_exercises(
         cardio_list=cardio_exercises_to_process,
+        db=sqlite_db_location,
     )
     strength_exercises_load_state = mfp_insert_strength_exercises(
         strength_list=strength_exercises_to_process,
+        db=sqlite_db_location,
     )
 
 
 if __name__ == "__main__":
-    flow.visualize(filename="mfp_etl_dag", format="png")
-    # flow.register(project_name="MFP Prototype")
-    flow_state = flow.run(
+    flow.run(
         from_date=datetime.date(2020, 9, 9),
         to_date=datetime.date(2020, 9, 10),
     )
+
+    # flow.visualize(filename="mfp_etl_dag", format="png")
+    # flow.run_agent(token="Q4bVSHBPAuHs_Bgiopqjeg")
+    # flow.register(project_name="MFP Test")
+    # flow_state = flow.run(
+    #    from_date=datetime.date(2020, 9, 9),
+    #    to_date=datetime.date(2020, 9, 10),
+    # )
     # flow.visualize(
     #     flow_state=flow_state,
     #     filename="mfp_etl_flow_status",
