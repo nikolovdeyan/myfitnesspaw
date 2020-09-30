@@ -12,10 +12,11 @@ from datetime import timedelta
 import jsonpickle
 import myfitnesspal
 import prefect
-import sql
 from prefect import Flow, Parameter, task, unmapped
 from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.tasks.secrets import EnvVarSecret
+
+from flows import sql
 
 create_mfp_database_script = f"""
 {sql.create_raw_day_table}
@@ -31,11 +32,6 @@ create_mfp_database_script = f"""
 {sql.create_measurements_table}
 """
 
-create_mfp_database = SQLiteScript(
-    name="Create MyFitnessPaw DB (if not existing)",
-    script=create_mfp_database_script,
-)
-
 
 class MaterializedDay:
     """A class to hold the properties from myfitnesspal that we are working with."""
@@ -50,8 +46,16 @@ class MaterializedDay:
         self.water = water
 
 
+create_mfp_database = SQLiteScript(
+    name="Create MyFitnessPaw DB (if not existing)",
+    script=create_mfp_database_script,
+)
+
+
 @task(name="Prepare Dates Sequence to Extract")
-def generate_dates_to_extract(from_date, to_date):
+def generate_dates_to_extract(from_date_str, to_date_str):
+    from_date = datetime.datetime.strptime(from_date_str, "%Y/%m/%d")
+    to_date = datetime.datetime.strptime(to_date_str, "%Y/%m/%d")
     delta_days = (to_date - from_date).days
     #  including both the starting and ending date
     return [from_date + timedelta(days=i) for i in range(delta_days + 1)]
@@ -61,7 +65,7 @@ def generate_dates_to_extract(from_date, to_date):
     name="Get Day Record for Date <- (myfitnesspal)",
     timeout=5,
     max_retries=10,
-    retry_delay=timedelta(seconds=10),
+    retry_delay=timedelta(seconds=5),
 )
 def get_myfitnesspal_day(username, password, date):
     client = myfitnesspal.Client(username=username, password=password)
@@ -99,7 +103,11 @@ def filter_new_or_changed_records(extracted_records, local_records):
 
 @task(name="Deserialize Day Records to Process")
 def deserialize_records_to_process(serialized_days):
-    return [jsonpickle.decode(day_json[2]) for day_json in serialized_days]
+    result = []
+    for day_json in serialized_days:
+        day_decoded = jsonpickle.decode(day_json[2], classes=[MaterializedDay])
+        result.append(day_decoded)
+    return result
 
 
 @task(name="Extract Meals from Day Sequence")
@@ -239,8 +247,6 @@ def mfp_insert_strength_exercises(strength_list, db):
         conn.commit()
 
 
-# schedule = IntervalSchedule(interval=timedelta(minutes=2))
-
 with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Gather required parameters/secrets
     username = EnvVarSecret("MYFITNESSPAW_USERNAME", raise_if_missing=True)
@@ -248,12 +254,12 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     from_date = Parameter(
         name="from_date",
         required=False,
-        default=datetime.date.today() - timedelta(days=1),
+        default=(datetime.date.today() - timedelta(days=1)).strftime("%Y/%m/%d"),
     )
     to_date = Parameter(
         name="to_date",
         required=False,
-        default=datetime.date.today() - timedelta(days=1),
+        default=(datetime.date.today() - timedelta(days=1)).strftime("%Y/%m/%d"),
     )
     sqlite_db_location = Parameter(
         name="sqlite_db_location", required=False, default="database/mfp_db.sqlite"
@@ -285,7 +291,6 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     )
 
     #  Compare the existing records with the ones just scraped:
-    #  This can probably also be realized with FilterTask:
     serialized_days_to_process = filter_new_or_changed_records(
         extracted_records=serialized_extracted_days,
         local_records=mfp_existing_days,
@@ -335,18 +340,7 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
 
 
 if __name__ == "__main__":
-    flow.run(
-        from_date=datetime.date(2020, 9, 9),
-        to_date=datetime.date(2020, 9, 10),
-    )
-
-    # flow.visualize(filename="mfp_etl_dag", format="png")
-    # flow.run_agent(token="Q4bVSHBPAuHs_Bgiopqjeg")
-    # flow.register(project_name="MFP Test")
-    # flow_state = flow.run(
-    #    from_date=datetime.date(2020, 9, 9),
-    #    to_date=datetime.date(2020, 9, 10),
-    # )
+    flow.register(project_name="MFP")
     # flow.visualize(
     #     flow_state=flow_state,
     #     filename="mfp_etl_flow_status",
