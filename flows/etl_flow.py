@@ -8,11 +8,16 @@ import datetime
 import sqlite3
 from contextlib import closing
 from datetime import timedelta
+from typing import Dict, List, Sequence, Tuple
 
 import jsonpickle
 import myfitnesspal
 import prefect
+import requests
+from myfitnesspal.exercise import Exercise
+from myfitnesspal.meal import Meal
 from prefect import Flow, Parameter, task, unmapped
+from prefect.engine.state import State
 from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.tasks.secrets import EnvVarSecret
 
@@ -36,7 +41,16 @@ create_mfp_database_script = f"""
 class MaterializedDay:
     """A class to hold the properties from myfitnesspal that we are working with."""
 
-    def __init__(self, username, date, meals, exercises, goals, notes, water):
+    def __init__(
+        self,
+        username: str,
+        date: datetime.date,
+        meals: List[Meal],
+        exercises: List[Exercise],
+        goals: Dict[str, float],
+        notes: List[str],
+        water: List[float],
+    ):
         self.username = username
         self.date = date
         self.meals = meals
@@ -52,8 +66,19 @@ create_mfp_database = SQLiteScript(
 )
 
 
+def post_to_slack(flow: Flow, old_state: State, new_state: State) -> State:
+    """State handler for Slack notifications in case of flow failure."""
+    if new_state.is_failed():
+        msg = f"MyFitnessPaw ETL flow complete with state {new_state}!"
+        requests.post("slack webhook url here", json={"text": msg})  # noqa
+    return new_state
+
+
 @task(name="Prepare Dates Sequence to Extract")
-def generate_dates_to_extract(from_date_str, to_date_str):
+def generate_dates_to_extract(
+    from_date_str: str, to_date_str: str
+) -> List[datetime.date]:
+    """Generate a list of dates between a start date and end date."""
     from_date = datetime.datetime.strptime(from_date_str, "%Y/%m/%d")
     to_date = datetime.datetime.strptime(to_date_str, "%Y/%m/%d")
     delta_days = (to_date - from_date).days
@@ -63,11 +88,13 @@ def generate_dates_to_extract(from_date_str, to_date_str):
 
 @task(
     name="Get Day Record for Date <- (myfitnesspal)",
-    timeout=5,
+    timeout=10,
     max_retries=10,
     retry_delay=timedelta(seconds=5),
 )
-def get_myfitnesspal_day(username, password, date):
+def get_myfitnesspal_day(
+    username: str, password: str, date: datetime.date
+) -> MaterializedDay:
     client = myfitnesspal.Client(username=username, password=password)
     myfitnesspal_day = client.get_date(date)
     #  Materialize lazy loading properties:
@@ -85,8 +112,10 @@ def get_myfitnesspal_day(username, password, date):
 
 
 @task(name="Serialize Day Records List")
-def serialize_myfitnesspal_days(myfitnesspal_days):
-    """Prepare a list of Day records for database load."""
+def serialize_myfitnesspal_days(
+    myfitnesspal_days: Sequence,
+) -> List[Tuple[str, datetime.date, str]]:
+    """Prepare a list of serialized Day records."""
     days_values = [
         (day.username, day.date, jsonpickle.encode(day)) for day in myfitnesspal_days
     ]
@@ -94,7 +123,10 @@ def serialize_myfitnesspal_days(myfitnesspal_days):
 
 
 @task(name="Filter New or Changed Day Records")
-def filter_new_or_changed_records(extracted_records, local_records):
+def filter_new_or_changed_records(
+    extracted_records: Sequence[str], local_records: Sequence[str]
+) -> List[str]:
+    """Filter out extracted records that are locally available already."""
     logger = prefect.context.get("logger")
     records_to_upsert = [t for t in extracted_records if t not in local_records]
     logger.info(f"Records to Insert/Update: {len(records_to_upsert)}")
@@ -102,7 +134,10 @@ def filter_new_or_changed_records(extracted_records, local_records):
 
 
 @task(name="Deserialize Day Records to Process")
-def deserialize_records_to_process(serialized_days):
+def deserialize_records_to_process(
+    serialized_days: Sequence[str],
+) -> List[MaterializedDay]:
+    """Deserialize a sequence of days."""
     result = []
     for day_json in serialized_days:
         day_decoded = jsonpickle.decode(day_json[2], classes=[MaterializedDay])
@@ -111,7 +146,8 @@ def deserialize_records_to_process(serialized_days):
 
 
 @task(name="Extract Meals from Day Sequence")
-def extract_meals_from_days(days):
+def extract_meals_from_days(days: Sequence[MaterializedDay]) -> List[Meal]:
+    """Extract myfitnesspal Meal items from a sequence of myfitnesspal Days."""
     for day in days:
         for meal in day.meals:
             if not meal:  # TODO: ?
@@ -123,7 +159,8 @@ def extract_meals_from_days(days):
 
 
 @task(name="Extract Meal Records from Meal Sequence")
-def extract_meal_records_from_meals(meals):
+def extract_meal_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
+    """Extract meal entry records from a sequence of myfitnesspal meals."""
     return [
         (
             meal.username,
@@ -141,7 +178,8 @@ def extract_meal_records_from_meals(meals):
 
 
 @task(name="Extract MealEntry Records from Meal Sequence")
-def extract_mealentry_records_from_meals(meals):
+def extract_mealentry_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
+    """Extract meal entries records from a sequence of myfitnesspal meals."""
     return [
         (
             meal.username,
@@ -163,7 +201,8 @@ def extract_mealentry_records_from_meals(meals):
 
 
 @task(name="Extract Cardio Exercises from Day Sequence")
-def extract_cardio_exercises_from_days(days):
+def extract_cardio_exercises_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+    """Extract cardio exercise entries from a sequence of myfitnesspal days."""
     return [
         (
             day.username,
@@ -178,7 +217,10 @@ def extract_cardio_exercises_from_days(days):
 
 
 @task(name="Extract Strength Exercises from Days Sequence")
-def extract_strength_exercises_from_days(days):
+def extract_strength_exercises_from_days(
+    days: Sequence[MaterializedDay],
+) -> List[Tuple]:
+    """Extract strength exercise entries from a sequence of myfitnesspal days."""
     return [
         (
             day.username,
@@ -194,7 +236,10 @@ def extract_strength_exercises_from_days(days):
 
 
 @task(name="Get Raw Day Records for Dates <- (MyFitnessPaw)")
-def mfp_select_raw_days(username, dates, db):
+def mfp_select_raw_days(
+    username: str, dates: Sequence[datetime.date], db: str
+) -> List[Tuple[str, datetime.date, str]]:
+    """Select raw day entries for username and provided dates."""
     mfp_existing_days = []
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
@@ -208,7 +253,8 @@ def mfp_select_raw_days(username, dates, db):
 
 
 @task(name="Load Raw Day Records -> (MyFitnessPaw)")
-def mfp_insert_raw_days(days_values, db):
+def mfp_insert_raw_days(days_values: Sequence[Tuple], db: str) -> None:
+    """Insert a sequence of day values in the database."""
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
@@ -216,7 +262,8 @@ def mfp_insert_raw_days(days_values, db):
 
 
 @task(name="Load Meal Records -> (MyFitnessPaw)")
-def mfp_insert_meals(meals_values, db):
+def mfp_insert_meals(meals_values: Sequence[Tuple], db: str) -> None:
+    """Insert a sequence of meal values in the database."""
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_meal_record, meals_values)
@@ -224,7 +271,8 @@ def mfp_insert_meals(meals_values, db):
 
 
 @task(name="Load MealEntry Records -> (MyFitnessPaw)")
-def mfp_insert_mealentries(mealentries_values, db):
+def mfp_insert_mealentries(mealentries_values: Sequence[Tuple], db: str) -> None:
+    """Insert a sequence of meal entry values in the database."""
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_mealentry_record, mealentries_values)
@@ -232,7 +280,8 @@ def mfp_insert_mealentries(mealentries_values, db):
 
 
 @task(name="Load CardioExercises Records -> (MyFitnessPaw)")
-def mfp_insert_cardio_exercises(cardio_list, db):
+def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple], db: str) -> None:
+    """Insert a sequence of cardio exercise entries in the database."""
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_cardioexercises_command, cardio_list)
@@ -240,13 +289,15 @@ def mfp_insert_cardio_exercises(cardio_list, db):
 
 
 @task(name="Load StrengthExercises Records -> (MyFitnessPaw)")
-def mfp_insert_strength_exercises(strength_list, db):
+def mfp_insert_strength_exercises(strength_list: Sequence[Tuple], db: str) -> None:
+    """Insert a sequence of strength exercise values in the database."""
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_strengthexercises_command, strength_list)
         conn.commit()
 
 
+# with Flow("MyFitnessPaw ETL Flow", state_handlers=[post_to_slack]) as flow:
 with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Gather required parameters/secrets
     username = EnvVarSecret("MYFITNESSPAW_USERNAME", raise_if_missing=True)
