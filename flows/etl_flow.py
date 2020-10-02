@@ -16,7 +16,7 @@ import prefect
 import requests
 from myfitnesspal.exercise import Exercise
 from myfitnesspal.meal import Meal
-from prefect import Flow, Parameter, task, unmapped
+from prefect import Flow, Parameter, flatten, mapped, task, unmapped
 from prefect.engine.state import State
 from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.tasks.secrets import EnvVarSecret
@@ -25,15 +25,10 @@ from flows import sql
 
 create_mfp_database_script = f"""
 {sql.create_raw_day_table}
-
 {sql.create_meals_table}
-
 {sql.create_mealentries_table}
-
 {sql.create_cardioexercises_table}
-
 {sql.create_strengthexercises_table}
-
 {sql.create_measurements_table}
 """
 
@@ -95,6 +90,7 @@ def generate_dates_to_extract(
 def get_myfitnesspal_day(
     username: str, password: str, date: datetime.date
 ) -> MaterializedDay:
+    """Get the myfitnesspal Day object for a provided date."""
     client = myfitnesspal.Client(username=username, password=password)
     myfitnesspal_day = client.get_date(date)
     #  Materialize lazy loading properties:
@@ -109,6 +105,33 @@ def get_myfitnesspal_day(
         water=myfitnesspal_day.water,
     )
     return day
+
+
+@task(
+    name="Get Measure Records for Dates <- (myfitnesspal)",
+    timeout=10,
+    max_retries=10,
+    retry_delay=timedelta(seconds=5),
+)
+def get_myfitnesspal_measure(
+    measure: str,
+    username: str,
+    password: str,
+    from_date_str: str,
+    to_date_str: str,
+) -> List[Tuple[str, datetime.date, str, float]]:
+    """Get the myfitnesspal measure records for a provided measure and time range."""
+    logger = prefect.context.get("logger")
+    from_date = datetime.datetime.strptime(from_date_str, "%Y/%m/%d").date()
+    to_date = datetime.datetime.strptime(to_date_str, "%Y/%m/%d").date()
+
+    client = myfitnesspal.Client(username=username, password=password)
+    try:
+        records = client.get_measurements(measure, from_date, to_date)
+    except ValueError:
+        logger.warning(f"No measurement records found for '{measure}' measure!")
+        return []
+    return [(username, date, measure, value) for date, value in records.items()]
 
 
 @task(name="Serialize Day Records List")
@@ -297,6 +320,15 @@ def mfp_insert_strength_exercises(strength_list: Sequence[Tuple], db: str) -> No
         conn.commit()
 
 
+@task(name="Load Measurement Records -> (MyFitnessPaw)")
+def mfp_insert_measurements(measurements: Sequence[Tuple], db: str) -> None:
+    """Insert a sequence of measurements in the database."""
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
+        cursor.executemany(sql.insert_measurements_command, measurements)
+        conn.commit()
+
+
 # with Flow("MyFitnessPaw ETL Flow", state_handlers=[post_to_slack]) as flow:
 with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Gather required parameters/secrets
@@ -311,6 +343,11 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
         name="to_date",
         required=False,
         default=(datetime.date.today() - timedelta(days=1)).strftime("%Y/%m/%d"),
+    )
+    measures = Parameter(
+        name="measures",
+        required=False,
+        default=["Weight"],
     )
     sqlite_db_location = Parameter(
         name="sqlite_db_location", required=False, default="database/mfp_db.sqlite"
@@ -370,7 +407,7 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Load meals and mealentries into their respective tables:
     meals_load_state = mfp_insert_meals(meals_records, db=sqlite_db_location)
     mealentries_load_state = mfp_insert_mealentries(
-        mealentries_records, db=sqlite_db_location
+        mealentries_records, db=sqlite_db_location, upstream_tasks=[meals_load_state]
     )
 
     #  Extract exercises from the day records:
@@ -389,11 +426,24 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
         db=sqlite_db_location,
     )
 
+    #  Measurements are extracted through a separate request to myfitnesspal unrelated
+    #  to the Day object we are working with in the previous steps. There is a separate
+    #  request made for each of the measures the user is tracking and the result is an
+    #  OrderedDict with the measurements for the whole date range.
+    measurements_records = get_myfitnesspal_measure(
+        measure=mapped(measures),
+        username=username,
+        password=password,
+        from_date_str=from_date,
+        to_date_str=to_date,
+    )
+
+    #  Insert the gathered measurements values:
+    measurements_load_state = mfp_insert_measurements(
+        measurements=flatten(measurements_records), db=sqlite_db_location
+    )
 
 if __name__ == "__main__":
-    flow.register(project_name="MFP")
-    # flow.visualize(
-    #     flow_state=flow_state,
-    #     filename="mfp_etl_flow_status",
-    #     format="png"
-    # )
+    flow.register(project_name="MyFitnessPaw")
+    # flow_state = flow.run()
+    # flow.visualize(filename="mfp_etl_flow", format="png")
