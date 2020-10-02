@@ -8,7 +8,7 @@ import datetime
 import sqlite3
 from contextlib import closing
 from datetime import timedelta
-from typing import Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import jsonpickle
 import myfitnesspal
@@ -23,15 +23,6 @@ from prefect.tasks.secrets import EnvVarSecret
 
 from flows import sql
 
-create_mfp_database_script = f"""
-{sql.create_raw_day_table}
-{sql.create_meals_table}
-{sql.create_mealentries_table}
-{sql.create_cardioexercises_table}
-{sql.create_strengthexercises_table}
-{sql.create_measurements_table}
-"""
-
 
 class MaterializedDay:
     """A class to hold the properties from myfitnesspal that we are working with."""
@@ -43,8 +34,8 @@ class MaterializedDay:
         meals: List[Meal],
         exercises: List[Exercise],
         goals: Dict[str, float],
-        notes: List[str],
-        water: List[float],
+        notes: Dict,  # currently python-myfitnesspal only scrapes food notes
+        water: float,
     ):
         self.username = username
         self.date = date
@@ -55,6 +46,16 @@ class MaterializedDay:
         self.water = water
 
 
+create_mfp_database_script = f"""
+{sql.create_raw_day_table}
+{sql.create_meals_table}
+{sql.create_mealentries_table}
+{sql.create_cardioexercises_table}
+{sql.create_strengthexercises_table}
+{sql.create_notes_table}
+{sql.create_water_table}
+{sql.create_measurements_table}
+"""
 create_mfp_database = SQLiteScript(
     name="Create MyFitnessPaw DB (if not existing)",
     script=create_mfp_database_script,
@@ -83,7 +84,7 @@ def generate_dates_to_extract(
 
 @task(
     name="Get Day Record for Date <- (myfitnesspal)",
-    timeout=10,
+    timeout=15,
     max_retries=10,
     retry_delay=timedelta(seconds=5),
 )
@@ -101,7 +102,7 @@ def get_myfitnesspal_day(
         meals=myfitnesspal_day.meals,
         exercises=myfitnesspal_day.exercises,
         goals=myfitnesspal_day.goals,
-        notes=myfitnesspal_day.notes,
+        notes=myfitnesspal_day.notes.as_dict(),
         water=myfitnesspal_day.water,
     )
     return day
@@ -109,7 +110,7 @@ def get_myfitnesspal_day(
 
 @task(
     name="Get Measure Records for Dates <- (myfitnesspal)",
-    timeout=10,
+    timeout=15,
     max_retries=10,
     retry_delay=timedelta(seconds=5),
 )
@@ -166,6 +167,30 @@ def deserialize_records_to_process(
         day_decoded = jsonpickle.decode(day_json[2], classes=[MaterializedDay])
         result.append(day_decoded)
     return result
+
+
+@task(name="Extract Notes from Day Sequence")
+def extract_notes_from_days(
+    days: Sequence[MaterializedDay],
+) -> List[Tuple[str, datetime.date, Optional[Any], Optional[Any]]]:
+    """Extract myfitnesspal Food Notes values from a sequence of myfitnesspal days."""
+    result = [
+        (
+            day.username,
+            day.date,
+            day.notes.get("type"),
+            day.notes.get("body"),
+        )
+        for day in days
+        if day.notes["body"]
+    ]
+    return result
+
+
+@task(name="Extract Water from Day Sequence")
+def extract_water_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+    """Extract myfitnesspal water values from a sequence of myfitnesspal days."""
+    return [(day.username, day.date, day.water) for day in days]
 
 
 @task(name="Extract Meals from Day Sequence")
@@ -284,6 +309,24 @@ def mfp_insert_raw_days(days_values: Sequence[Tuple], db: str) -> None:
         conn.commit()
 
 
+@task(name="Load Notes Records -> (MyFitnessPaw)")
+def mfp_insert_notes(notes_values: Sequence[Tuple], db: str) -> None:
+    """Insert a sequence of note values in the database."""
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
+        cursor.executemany(sql.insert_note_record, notes_values)
+        conn.commit()
+
+
+@task(name="Load Water Records -> (MyFitnessPaw)")
+def mfp_insert_water(water_values: Sequence[Tuple], db: str) -> None:
+    """Insert a sequence of water records values in the database."""
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
+        cursor.executemany(sql.insert_water_record, water_values)
+        conn.commit()
+
+
 @task(name="Load Meal Records -> (MyFitnessPaw)")
 def mfp_insert_meals(meals_values: Sequence[Tuple], db: str) -> None:
     """Insert a sequence of meal values in the database."""
@@ -395,6 +438,15 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
         serialized_days=serialized_days_to_process, upstream_tasks=[raw_days_load_state]
     )
 
+    #  Extract and load notes for each day.
+    #  Currently only food notes are being processed.
+    notes_records = extract_notes_from_days(days_to_process)
+    notes_load_state = mfp_insert_notes(notes_records, db=sqlite_db_location)
+
+    #  Extract and load water intake records for each day.
+    water_records = extract_water_from_days(days_to_process)
+    water_load_state = mfp_insert_water(water_records, db=sqlite_db_location)
+
     #  Prepare a sequence of all meals in the records to process:
     meals_to_process = extract_meals_from_days(days_to_process)
 
@@ -440,10 +492,12 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
 
     #  Insert the gathered measurements values:
     measurements_load_state = mfp_insert_measurements(
-        measurements=flatten(measurements_records), db=sqlite_db_location
+        measurements=flatten(measurements_records),
+        db=sqlite_db_location,
+        upstream_tasks=[database_exists],
     )
 
 if __name__ == "__main__":
-    flow.register(project_name="MyFitnessPaw")
-    # flow_state = flow.run()
-    # flow.visualize(filename="mfp_etl_flow", format="png")
+    flow.register(project_name="MyFitnessPaw (Test)")
+    # flow_state = flow.run(from_date="2020/09/27", to_date="2020/09/30")
+    # flow.visualize(filename="mfp_etl_dag", format="png")

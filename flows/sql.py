@@ -81,6 +81,33 @@ CREATE TABLE IF NOT EXISTS StrengthExercises (
 );
 """
 
+create_notes_table = """
+CREATE TABLE IF NOT EXISTS Notes (
+  userid TEXT NOT NULL,
+  date TEXT NOT NULL,
+  type TEXT NOT NULL,
+  body TEXT,
+  PRIMARY KEY(userid, date),
+  CONSTRAINT fk_rawdaydata
+    FOREIGN KEY(userid, date)
+    REFERENCES RawDayData(userid, date)
+    ON DELETE CASCADE
+);
+"""
+
+create_water_table = """
+CREATE TABLE IF NOT EXISTS Water (
+  userid TEXT NOT NULL,
+  date TEXT NOT NULL,
+  quantity REAL NOT NULL,
+  PRIMARY KEY(userid, date),
+  CONSTRAINT fk_rawdaydata
+    FOREIGN KEY(userid, date)
+    REFERENCES RawDayData(userid, date)
+    ON DELETE CASCADE
+);
+"""
+
 create_measurements_table = """
 CREATE TABLE IF NOT EXISTS Measurements (
   userid text NOT NULL,
@@ -98,6 +125,14 @@ SELECT rawdaydata FROM RawDayData WHERE userid=? AND date=?
 insert_or_replace_rawdaydata_record = """
 INSERT OR REPLACE INTO RawDayData(userid, date, rawdaydata)
 VALUES (?, ?, ?)
+"""
+
+insert_note_record = """
+INSERT INTO Notes(userid, date, type, body) VALUES (?, ?, ?, ?)
+"""
+
+insert_water_record = """
+INSERT INTO Water(userid, date, quantity) VALUES (?, ?, ?)
 """
 
 insert_meal_record = """
