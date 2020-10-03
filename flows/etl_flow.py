@@ -76,8 +76,8 @@ def generate_dates_to_extract(
     from_date_str: str, to_date_str: str
 ) -> List[datetime.date]:
     """Generate a list of dates between a start date and end date."""
-    from_date = datetime.datetime.strptime(from_date_str, "%Y/%m/%d")
-    to_date = datetime.datetime.strptime(to_date_str, "%Y/%m/%d")
+    from_date = datetime.datetime.strptime(from_date_str, "%Y/%m/%d").date()
+    to_date = datetime.datetime.strptime(to_date_str, "%Y/%m/%d").date()
     delta_days = (to_date - from_date).days
     #  including both the starting and ending date
     return [from_date + timedelta(days=i) for i in range(delta_days + 1)]
@@ -352,6 +352,7 @@ def mfp_insert_goals(goals_values: Sequence[Tuple], db: str) -> None:
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_goals_record, goals_values)
+        conn.commit()
 
 
 @task(name="Load Meal Records -> (MyFitnessPaw)")
@@ -529,6 +530,6 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     )
 
 if __name__ == "__main__":
-    flow.register(project_name="MyFitnessPaw (Test)")
-    # flow_state = flow.run(from_date="2020/09/27", to_date="2020/09/30")
+    # flow.register(project_name="MyFitnessPaw (Test)")
+    flow_state = flow.run(from_date="2020/05/01", to_date="2020/05/30")
     # flow.visualize(filename="mfp_etl_dag", format="png")
