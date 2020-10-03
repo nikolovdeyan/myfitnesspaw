@@ -50,6 +50,24 @@ CREATE TABLE IF NOT EXISTS MealEntries (
 );
 """
 
+create_goals_table = """
+CREATE TABLE IF NOT EXISTS Goals (
+  userid text NOT NULL,
+  date text NOT NULL,
+  calories INTEGER,
+  carbs INTEGER,
+  fat INTEGER,
+  protein INTEGER,
+  sodium INTEGER,
+  sugar INTEGER,
+  PRIMARY KEY(userid, date),
+  CONSTRAINT fk_rawdaydata
+    FOREIGN KEY(userid, date)
+    REFERENCES RawDayData(userid, date)
+    ON DELETE CASCADE
+);
+"""
+
 create_cardioexercises_table = """
 CREATE TABLE IF NOT EXISTS CardioExercises (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,6 +153,10 @@ insert_water_record = """
 INSERT INTO Water(userid, date, quantity) VALUES (?, ?, ?)
 """
 
+insert_goals_record = """
+INSERT INTO Goals(userid, date, calories, carbs, fat, protein, sodium, sugar)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+"""
 insert_meal_record = """
 INSERT INTO Meals(userid, date, name, calories, carbs, fat, protein, sodium, sugar)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

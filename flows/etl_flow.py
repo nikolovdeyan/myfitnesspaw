@@ -48,12 +48,13 @@ class MaterializedDay:
 
 create_mfp_database_script = f"""
 {sql.create_raw_day_table}
+{sql.create_notes_table}
+{sql.create_water_table}
+{sql.create_goals_table}
 {sql.create_meals_table}
 {sql.create_mealentries_table}
 {sql.create_cardioexercises_table}
 {sql.create_strengthexercises_table}
-{sql.create_notes_table}
-{sql.create_water_table}
 {sql.create_measurements_table}
 """
 create_mfp_database = SQLiteScript(
@@ -193,6 +194,24 @@ def extract_water_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
     return [(day.username, day.date, day.water) for day in days]
 
 
+@task(name="Extract Goals from Day Sequence")
+def extract_goals_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+    """Extract myfitnesspal daily goals from a sequence of myfitnesspal days."""
+    return [
+        (
+            day.username,
+            day.date,
+            day.goals.get("calories", None),
+            day.goals.get("carbohydrates", None),
+            day.goals.get("fat", None),
+            day.goals.get("protein", None),
+            day.goals.get("sodium", None),
+            day.goals.get("sugar", None),
+        )
+        for day in days
+    ]
+
+
 @task(name="Extract Meals from Day Sequence")
 def extract_meals_from_days(days: Sequence[MaterializedDay]) -> List[Meal]:
     """Extract myfitnesspal Meal items from a sequence of myfitnesspal Days."""
@@ -327,6 +346,14 @@ def mfp_insert_water(water_values: Sequence[Tuple], db: str) -> None:
         conn.commit()
 
 
+@task(name="Load Goals Records -> (MyFitnessPaw)")
+def mfp_insert_goals(goals_values: Sequence[Tuple], db: str) -> None:
+    """Insert a sequence of goals records in the database."""
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
+        cursor.execute("PRAGMA foreign_keys = YES;")
+        cursor.executemany(sql.insert_goals_record, goals_values)
+
+
 @task(name="Load Meal Records -> (MyFitnessPaw)")
 def mfp_insert_meals(meals_values: Sequence[Tuple], db: str) -> None:
     """Insert a sequence of meal values in the database."""
@@ -438,14 +465,18 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
         serialized_days=serialized_days_to_process, upstream_tasks=[raw_days_load_state]
     )
 
-    #  Extract and load notes for each day.
+    #  Extract and load notes for each day:
     #  Currently only food notes are being processed.
     notes_records = extract_notes_from_days(days_to_process)
     notes_load_state = mfp_insert_notes(notes_records, db=sqlite_db_location)
 
-    #  Extract and load water intake records for each day.
+    #  Extract and load water intake records for each day:
     water_records = extract_water_from_days(days_to_process)
     water_load_state = mfp_insert_water(water_records, db=sqlite_db_location)
+
+    #  Extract and load daily goals:
+    goals_records = extract_goals_from_days(days_to_process)
+    goals_load_state = mfp_insert_goals(goals_records, db=sqlite_db_location)
 
     #  Prepare a sequence of all meals in the records to process:
     meals_to_process = extract_meals_from_days(days_to_process)
