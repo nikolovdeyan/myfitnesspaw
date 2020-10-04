@@ -4,20 +4,19 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
-black = "*"
 isort = "*"
 flake8 = "*"
-mypy = "*"
 pytest = "*"
 pytest-cov = "*"
+mypy = "*"
 pre-commit = "*"
-prefect = {extras = ["dev"], version = "*"}
+prefect = {extras = ["viz"], version = "*"}
+black = "*"
 
 [packages]
+prefect = "*"
 jsonpickle = "*"
 myfitnesspal = "*"
-prefect = "*"
-myfitnesspaw = {editable = true, path = "."}
 
 [requires]
 python_version = "3.8"
