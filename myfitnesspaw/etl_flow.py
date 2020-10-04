@@ -21,7 +21,7 @@ from prefect.engine.state import State
 from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.tasks.secrets import EnvVarSecret
 
-from flows import sql
+from . import sql
 
 
 class MaterializedDay:
@@ -65,9 +65,10 @@ create_mfp_database = SQLiteScript(
 
 def post_to_slack(flow: Flow, old_state: State, new_state: State) -> State:
     """State handler for Slack notifications in case of flow failure."""
+    slack_url = prefect.context.config.context.secrets.get("SLACK_WEBHOOK_URL", None)
     if new_state.is_failed():
         msg = f"MyFitnessPaw ETL flow complete with state {new_state}!"
-        requests.post("slack webhook url here", json={"text": msg})  # noqa
+        requests.post(slack_url, json={"text": msg})
     return new_state
 
 
@@ -304,9 +305,10 @@ def extract_strength_exercises_from_days(
 
 @task(name="Get Raw Day Records for Dates <- (MyFitnessPaw)")
 def mfp_select_raw_days(
-    username: str, dates: Sequence[datetime.date], db: str
+    username: str, dates: Sequence[datetime.date]
 ) -> List[Tuple[str, datetime.date, str]]:
     """Select raw day entries for username and provided dates."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     mfp_existing_days = []
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
@@ -320,8 +322,9 @@ def mfp_select_raw_days(
 
 
 @task(name="Load Raw Day Records -> (MyFitnessPaw)")
-def mfp_insert_raw_days(days_values: Sequence[Tuple], db: str) -> None:
+def mfp_insert_raw_days(days_values: Sequence[Tuple]) -> None:
     """Insert a sequence of day values in the database."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
@@ -329,8 +332,9 @@ def mfp_insert_raw_days(days_values: Sequence[Tuple], db: str) -> None:
 
 
 @task(name="Load Notes Records -> (MyFitnessPaw)")
-def mfp_insert_notes(notes_values: Sequence[Tuple], db: str) -> None:
+def mfp_insert_notes(notes_values: Sequence[Tuple]) -> None:
     """Insert a sequence of note values in the database."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_note_record, notes_values)
@@ -338,8 +342,9 @@ def mfp_insert_notes(notes_values: Sequence[Tuple], db: str) -> None:
 
 
 @task(name="Load Water Records -> (MyFitnessPaw)")
-def mfp_insert_water(water_values: Sequence[Tuple], db: str) -> None:
+def mfp_insert_water(water_values: Sequence[Tuple]) -> None:
     """Insert a sequence of water records values in the database."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_water_record, water_values)
@@ -347,8 +352,9 @@ def mfp_insert_water(water_values: Sequence[Tuple], db: str) -> None:
 
 
 @task(name="Load Goals Records -> (MyFitnessPaw)")
-def mfp_insert_goals(goals_values: Sequence[Tuple], db: str) -> None:
+def mfp_insert_goals(goals_values: Sequence[Tuple]) -> None:
     """Insert a sequence of goals records in the database."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_goals_record, goals_values)
@@ -356,8 +362,9 @@ def mfp_insert_goals(goals_values: Sequence[Tuple], db: str) -> None:
 
 
 @task(name="Load Meal Records -> (MyFitnessPaw)")
-def mfp_insert_meals(meals_values: Sequence[Tuple], db: str) -> None:
+def mfp_insert_meals(meals_values: Sequence[Tuple]) -> None:
     """Insert a sequence of meal values in the database."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_meal_record, meals_values)
@@ -365,8 +372,9 @@ def mfp_insert_meals(meals_values: Sequence[Tuple], db: str) -> None:
 
 
 @task(name="Load MealEntry Records -> (MyFitnessPaw)")
-def mfp_insert_mealentries(mealentries_values: Sequence[Tuple], db: str) -> None:
+def mfp_insert_mealentries(mealentries_values: Sequence[Tuple]) -> None:
     """Insert a sequence of meal entry values in the database."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_mealentry_record, mealentries_values)
@@ -374,8 +382,9 @@ def mfp_insert_mealentries(mealentries_values: Sequence[Tuple], db: str) -> None
 
 
 @task(name="Load CardioExercises Records -> (MyFitnessPaw)")
-def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple], db: str) -> None:
+def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple]) -> None:
     """Insert a sequence of cardio exercise entries in the database."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_cardioexercises_command, cardio_list)
@@ -383,8 +392,9 @@ def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple], db: str) -> None:
 
 
 @task(name="Load StrengthExercises Records -> (MyFitnessPaw)")
-def mfp_insert_strength_exercises(strength_list: Sequence[Tuple], db: str) -> None:
+def mfp_insert_strength_exercises(strength_list: Sequence[Tuple]) -> None:
     """Insert a sequence of strength exercise values in the database."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_strengthexercises_command, strength_list)
@@ -392,16 +402,17 @@ def mfp_insert_strength_exercises(strength_list: Sequence[Tuple], db: str) -> No
 
 
 @task(name="Load Measurement Records -> (MyFitnessPaw)")
-def mfp_insert_measurements(measurements: Sequence[Tuple], db: str) -> None:
+def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
     """Insert a sequence of measurements in the database."""
+    db = prefect.context.parameters.get("sqlite_db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_measurements_command, measurements)
         conn.commit()
 
 
-# with Flow("MyFitnessPaw ETL Flow", state_handlers=[post_to_slack]) as flow:
-with Flow("MyFitnessPaw ETL Flow") as flow:
+with Flow("MyFitnessPaw ETL Flow", state_handlers=[post_to_slack]) as flow:
+    # with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Gather required parameters/secrets
     username = EnvVarSecret("MYFITNESSPAW_USERNAME", raise_if_missing=True)
     password = EnvVarSecret("MYFITNESSPAW_PASSWORD", raise_if_missing=True)
@@ -427,38 +438,31 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Pass connection string to database creation task at runtime:
     database_exists = create_mfp_database(db=sqlite_db_location)
 
-    #  Prepeare a sequence of dates to be scraped:
+    #  Prepeare a sequence of dates to be extracted and get the day info for each:
     dates_to_extract = generate_dates_to_extract(from_date, to_date)
-
-    #  Get a myfitnesspal Day record for each date in the list:
     extracted_days = get_myfitnesspal_day.map(
         date=dates_to_extract,
         username=unmapped(username),
         password=unmapped(password),
     )
 
-    #  Prepare the extracted days for load to mfp database:
+    #  The days must be serialized in order to be stored in the database.
     serialized_extracted_days = serialize_myfitnesspal_days(extracted_days)
 
-    #  We need to compare the extracted days with what we already have in the database
-    #  for this username and date. Select the records applicable:
+    #  Select the days that we already have in the database for the date range:
     mfp_existing_days = mfp_select_raw_days(
-        db=sqlite_db_location,
         username=username,
         dates=dates_to_extract,
         upstream_tasks=[database_exists],
     )
 
-    #  Compare the existing records with the ones just scraped:
+    #  Compare the existing records with the extracted records and filter out what
+    #  is already available. Load only the new or changed raw days:
     serialized_days_to_process = filter_new_or_changed_records(
         extracted_records=serialized_extracted_days,
         local_records=mfp_existing_days,
     )
-
-    #  Load the transformed sequence of raw myfitnesspal days to mfp database:
-    raw_days_load_state = mfp_insert_raw_days(
-        serialized_days_to_process, sqlite_db_location
-    )
+    raw_days_load_state = mfp_insert_raw_days(serialized_days_to_process)
 
     #  The sequence of filtered records to process will be deserialized before
     #  populating the reporting table to make extracting the information easier.
@@ -469,45 +473,35 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
     #  Extract and load notes for each day:
     #  Currently only food notes are being processed.
     notes_records = extract_notes_from_days(days_to_process)
-    notes_load_state = mfp_insert_notes(notes_records, db=sqlite_db_location)
+    notes_load_state = mfp_insert_notes(notes_records)
 
     #  Extract and load water intake records for each day:
     water_records = extract_water_from_days(days_to_process)
-    water_load_state = mfp_insert_water(water_records, db=sqlite_db_location)
+    water_load_state = mfp_insert_water(water_records)
 
     #  Extract and load daily goals:
     goals_records = extract_goals_from_days(days_to_process)
-    goals_load_state = mfp_insert_goals(goals_records, db=sqlite_db_location)
+    goals_load_state = mfp_insert_goals(goals_records)
 
-    #  Prepare a sequence of all meals in the records to process:
+    #  Prepare a sequences of all meals and meal entries and load:
     meals_to_process = extract_meals_from_days(days_to_process)
-
-    #  Extract the meals' records to prepare for load in the database:
     meals_records = extract_meal_records_from_meals(meals_to_process)
-
-    #  Extract individual meal entries from each meal from the list:
     mealentries_records = extract_mealentry_records_from_meals(meals_to_process)
-
-    #  Load meals and mealentries into their respective tables:
-    meals_load_state = mfp_insert_meals(meals_records, db=sqlite_db_location)
+    meals_load_state = mfp_insert_meals(meals_records)
     mealentries_load_state = mfp_insert_mealentries(
-        mealentries_records, db=sqlite_db_location, upstream_tasks=[meals_load_state]
+        mealentries_records, upstream_tasks=[meals_load_state]
     )
 
-    #  Extract exercises from the day records:
+    #  Extract and load exercises:
     cardio_exercises_to_process = extract_cardio_exercises_from_days(days_to_process)
     strength_exercises_to_process = extract_strength_exercises_from_days(
         days_to_process
     )
-
-    #  Load exercises into their respective tables:
     cardio_exercises_load_state = mfp_insert_cardio_exercises(
         cardio_list=cardio_exercises_to_process,
-        db=sqlite_db_location,
     )
     strength_exercises_load_state = mfp_insert_strength_exercises(
         strength_list=strength_exercises_to_process,
-        db=sqlite_db_location,
     )
 
     #  Measurements are extracted through a separate request to myfitnesspal unrelated
@@ -521,15 +515,12 @@ with Flow("MyFitnessPaw ETL Flow") as flow:
         from_date_str=from_date,
         to_date_str=to_date,
     )
-
-    #  Insert the gathered measurements values:
     measurements_load_state = mfp_insert_measurements(
         measurements=flatten(measurements_records),
-        db=sqlite_db_location,
         upstream_tasks=[database_exists],
     )
 
 if __name__ == "__main__":
     # flow.register(project_name="MyFitnessPaw (Test)")
-    flow_state = flow.run(from_date="2020/05/01", to_date="2020/05/30")
+    flow_state = flow.run(from_date="2020/10/01", to_date="2020/10/03")
     # flow.visualize(filename="mfp_etl_dag", format="png")
