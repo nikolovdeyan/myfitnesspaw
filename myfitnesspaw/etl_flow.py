@@ -8,6 +8,7 @@ import datetime
 import sqlite3
 from contextlib import closing
 from datetime import timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import jsonpickle
@@ -70,6 +71,15 @@ def post_to_slack(flow: Flow, old_state: State, new_state: State) -> State:
         msg = f"MyFitnessPaw ETL flow complete with state {new_state}!"
         requests.post(slack_url, json={"text": msg})
     return new_state
+
+
+@task(name="Prepare MFP Database Directory")
+def create_mfp_db_directory(db):
+    """Prepare the database directory."""
+    db_dir = "/".join([d for d in db.split("/")[:-1]])
+    root_dir = Path().cwd()
+    db_path = root_dir.joinpath(Path(db_dir))
+    db_path.mkdir(parents=True, exist_ok=True)
 
 
 @task(name="Prepare Dates Sequence to Extract")
@@ -431,12 +441,16 @@ with Flow("MyFitnessPaw ETL Flow", state_handlers=[post_to_slack]) as flow:
         required=False,
         default=["Weight"],
     )
-    sqlite_db_location = Parameter(
+    db_conn_str = Parameter(
         name="sqlite_db_location", required=False, default="database/mfp_db.sqlite"
     )
+    #  Ensure database directory is available:
+    database_dir_exists = create_mfp_db_directory(db=db_conn_str)
 
     #  Pass connection string to database creation task at runtime:
-    database_exists = create_mfp_database(db=sqlite_db_location)
+    database_exists = create_mfp_database(
+        db=db_conn_str, upstream_tasks=[database_dir_exists]
+    )
 
     #  Prepeare a sequence of dates to be extracted and get the day info for each:
     dates_to_extract = generate_dates_to_extract(from_date, to_date)
