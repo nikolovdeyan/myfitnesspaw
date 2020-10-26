@@ -1,6 +1,6 @@
 """MyFitnessPaw's Extract-Transform-Load Prefect Flow.
 
-This Prefect flow encompases the steps to extract information from www.myfitnesspal.com,
+This Prefect flow contains the steps to extract information from www.myfitnesspal.com,
 transform and store it locally in an SQLite database. The raw objects' data is stored in
 a serialized JSON form which is then used to prepare several report-friendly tables.
 """
@@ -64,12 +64,16 @@ create_mfp_database = SQLiteScript(
 )
 
 
-def post_to_slack(flow: Flow, old_state: State, new_state: State) -> State:
+def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> State:
     """State handler for Slack notifications in case of flow failure."""
-    slack_url = prefect.context.config.context.secrets.get("SLACK_WEBHOOK_URL", None)
+    logger = prefect.context.get("logger")
+    slack_hook_url = EnvVarSecret("MYFITNESSPAW_SLACK_WEBHOOK_URL")
     if new_state.is_failed():
-        msg = f"MyFitnessPaw ETL flow complete with state {new_state}!"
-        requests.post(slack_url, json={"text": msg})
+        if not slack_hook_url.run():
+            logger.info("No Slack hook url provided, skipping notification...")
+            return new_state
+        msg = f"MyFitnessPaw ETL flow has failed: {new_state}!"
+        requests.post(slack_hook_url.run(), json={"text": msg})
     return new_state
 
 
@@ -421,8 +425,7 @@ def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
         conn.commit()
 
 
-with Flow("MyFitnessPaw ETL Flow", state_handlers=[post_to_slack]) as flow:
-    # with Flow("MyFitnessPaw ETL Flow") as flow:
+with Flow("MyFitnessPaw ETL Flow", state_handlers=[slack_notify_on_failure]) as flow:
     #  Gather required parameters/secrets
     username = EnvVarSecret("MYFITNESSPAW_USERNAME", raise_if_missing=True)
     password = EnvVarSecret("MYFITNESSPAW_PASSWORD", raise_if_missing=True)

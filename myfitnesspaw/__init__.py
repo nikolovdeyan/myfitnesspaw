@@ -1,4 +1,2 @@
-from . import backup_flow as backup  # noqa
-from . import etl_flow, sql  # noqa
-
-etl = etl_flow.flow
+from myfitnesspaw import backup_flow as backup  # noqa
+from myfitnesspaw import etl_flow as etl  # noqa

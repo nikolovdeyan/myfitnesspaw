@@ -7,7 +7,7 @@ export MYFITNESSPAW_USERNAME=""
 export MYFITNESSPAW_PASSWORD=""
 
 # ##  --- Slack Integration---
-export MYFITNESSPAW_SLACK_HOOK=""
+export MYFITNESSPAW_SLACK_WEBHOOK_URL=""
 
 # ##  --- Prefect Cloud ---
 export PREFECT__CLOUD__AGENT__AUTH_TOKEN=""
