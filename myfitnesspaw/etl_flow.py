@@ -538,6 +538,4 @@ with Flow("MyFitnessPaw ETL Flow", state_handlers=[slack_notify_on_failure]) as 
     )
 
 if __name__ == "__main__":
-    # flow.register(project_name="MyFitnessPaw (Test)")
-    flow_state = flow.run(from_date="2020/10/01", to_date="2020/10/03")
-    # flow.visualize(filename="mfp_etl_dag", format="png")
+    flow_state = flow.run()
