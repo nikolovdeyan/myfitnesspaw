@@ -179,6 +179,6 @@ VALUES (?, ?, ?, ?, ?, ?)
 """
 
 insert_measurements_command = """
-INSERT OR REPLACE INTO Measurements(userid, measure_name, date, value)
+INSERT OR REPLACE INTO Measurements(userid, date, measure_name, value)
 VALUES (?, ?, ?, ?)
 """
