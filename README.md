@@ -118,3 +118,4 @@ Myfitnesspaw provides a state handler that (if configured) will send a notificat
 3. Run `source secrets/set_environment.sh` to apply the new variable before the next flow run. You should now receive notifications on flow run failures in the selected Slack channel.
 
 ## License
+[MIT](https://opensource.org/licenses/MIT)
