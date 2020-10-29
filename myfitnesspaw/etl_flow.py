@@ -432,7 +432,7 @@ with Flow("MyFitnessPaw ETL Flow", state_handlers=[slack_notify_on_failure]) as 
     from_date = Parameter(
         name="from_date",
         required=False,
-        default=(datetime.date.today() - timedelta(days=1)).strftime("%Y/%m/%d"),
+        default=(datetime.date.today() - timedelta(days=5)).strftime("%Y/%m/%d"),
     )
     to_date = Parameter(
         name="to_date",
