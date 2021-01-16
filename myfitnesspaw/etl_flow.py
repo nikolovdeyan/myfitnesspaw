@@ -532,6 +532,7 @@ with Flow("MyFitnessPaw ETL Flow", state_handlers=[slack_notify_on_failure]) as 
         from_date_str=from_date,
         to_date_str=to_date,
     )
+    #  Here check or delete all measurements between from_date and to_date for the selected measures.
     measurements_load_state = mfp_insert_measurements(
         measurements=flatten(measurements_records),
         upstream_tasks=[database_exists],

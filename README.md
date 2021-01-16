@@ -95,7 +95,7 @@ prefect backend cloud
 ```sh
 prefect auth login -t <user token>
 ```
-4. Create an agent authentication token (RUNNER scoped API token. Add to configuration `PREFECT__CLOUD__AGENT__AUTH_TOKEN`)
+4. Create an agent authentication token (RUNNER scoped API token. Team -> API Tokens). Add to configuration `PREFECT__CLOUD__AGENT__AUTH_TOKEN`)
 5. Source the configuration variables and run the Prefect agent:
 ```sh
 source secrets/set_environment.sh
