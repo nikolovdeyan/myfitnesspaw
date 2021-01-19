@@ -21,6 +21,7 @@ from prefect import Flow, Parameter, flatten, mapped, task, unmapped
 from prefect.engine.state import State
 from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.tasks.secrets import EnvVarSecret
+from prefect.run_configs import LocalRun
 
 from . import sql
 
@@ -426,6 +427,10 @@ def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
 
 
 with Flow("MyFitnessPaw ETL Flow", state_handlers=[slack_notify_on_failure]) as flow:
+    # working_dir: Working directory in which to start the process, must already exist.
+    #              If not provided, will be run in the same directory as the agent.
+    #flow.run_config = LocalRun(working_dir="")
+
     #  Gather required parameters/secrets
     username = EnvVarSecret("MYFITNESSPAW_USERNAME", raise_if_missing=True)
     password = EnvVarSecret("MYFITNESSPAW_PASSWORD", raise_if_missing=True)
