@@ -20,7 +20,7 @@ from myfitnesspal.meal import Meal
 from prefect import Flow, Parameter, flatten, mapped, task, unmapped
 from prefect.engine.state import State
 from prefect.tasks.database.sqlite import SQLiteScript
-from prefect.tasks.secrets import EnvVarSecret
+from prefect.tasks.secrets import PrefectSecret
 from prefect.run_configs import LocalRun
 
 from . import sql
@@ -68,7 +68,7 @@ create_mfp_database = SQLiteScript(
 def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> State:
     """State handler for Slack notifications in case of flow failure."""
     logger = prefect.context.get("logger")
-    slack_hook_url = EnvVarSecret("MYFITNESSPAW_SLACK_WEBHOOK_URL")
+    slack_hook_url = PrefectSecret("MYFITNESSPAW_SLACK_WEBHOOK_URL")
     if new_state.is_failed():
         if not slack_hook_url.run():
             logger.info("No Slack hook url provided, skipping notification...")
@@ -429,11 +429,18 @@ def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
 with Flow("MyFitnessPaw ETL Flow", state_handlers=[slack_notify_on_failure]) as flow:
     # working_dir: Working directory in which to start the process, must already exist.
     #              If not provided, will be run in the same directory as the agent.
-    #flow.run_config = LocalRun(working_dir="")
+    WORKING_DIR = ""
+    flow.run_config = LocalRun(
+        working_dir=WORKING_DIR,
+        env={
+            "PYTHONPATH": f"{WORKING_DIR}/.venv/lib/python3.9/site-packages",
+            "PREFECT__USER_CONFIG_PATH": f"{WORKING_DIR}/mfp_config.toml",
+        },
+    )
 
     #  Gather required parameters/secrets
-    username = EnvVarSecret("MYFITNESSPAW_USERNAME", raise_if_missing=True)
-    password = EnvVarSecret("MYFITNESSPAW_PASSWORD", raise_if_missing=True)
+    username = PrefectSecret("MYFITNESSPAL_USERNAME")
+    password = PrefectSecret("MYFITNESSPAL_PASSWORD")
     from_date = Parameter(
         name="from_date",
         required=False,
