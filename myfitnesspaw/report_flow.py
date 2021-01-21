@@ -1,38 +1,47 @@
+import os
 import datetime
 from datetime import timedelta
 
+import prefect
 from prefect import Flow, Parameter, task
-from prefect.tasks.notifications.email_task import EmailTask
+from prefect.storage.local import Local
+from prefect.run_configs import LocalRun
 
 
 @task
-def select_report_data(username, from_date, to_date):
-    pass
+def log_config_information():
+    logger = prefect.context.get("logger")
+    msg = f"""
+    Running in: {os.getcwd()}
+    ----
+    $PATH: {os.environ.get('PATH', 'N/A')}
+    $PYTHONPATH: {os.environ.get('PYTHONPATH', 'N/A')}
+    $PREFECT__CLOUD__AGENT__LABELS: {os.environ.get('PREFECT__CLOUD__AGENT__LABELS', 'N/A')}
+    -----
+    Prefect system information: {prefect.utilities.diagnostics.system_information()}
+    -----
+    Prefect environment: {prefect.utilities.diagnostics.environment_variables()}
+    -----
+    Prefect config: {prefect.context.config}
+    """
+    logger.info(msg)
 
 
 @task
-def email_report(recepient_email, report_data):
-    msg = None
-    e = EmailTask(
-        subject="MyFitnessPaw Stats Report",
-        msg=msg,
-        smtp_server="smtp.gmail.com",
-        smtp_port=465,
-        smtp_type="SSL",
-    )
-    e.run(email_to=recepient_email)
+def log_flow_information(f):
+    logger = prefect.context.get("logger")
+    msg = f"""
+    Prefect flow information: {prefect.utilities.diagnostics.flow_information(f)}
+    """
+    logger.info(msg)
 
 
-def create_email_report_flow():
-    with Flow("MyFitnessPaw Email Report Flow") as flow:
-        from_date = Parameter(  # noqa
-            name="from_date",
-            required=False,
-            default=(datetime.date.today() - timedelta(days=7)).strftime("%Y/%m/%d"),
-        )
-        to_date = Parameter(  # noqa
-            name="to_date",
-            required=False,
-            default=(datetime.date.today() - timedelta(days=1)).strftime("%Y/%m/%d"),
-        )
-    return flow
+with Flow("Diagnostic Log Flow") as flow:
+    # working_dir = ""
+    # flow.run_config = LocalRun(
+    #             working_dir=f"{working_dir}",
+    #             env={"PYTHONPATH": ""},
+    #         )
+    flow.run_config = LocalRun()
+    a = log_config_information()
+    b = log_flow_information(flow)
