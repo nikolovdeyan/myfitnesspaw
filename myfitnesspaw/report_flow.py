@@ -37,11 +37,10 @@ def log_flow_information(f):
 
 
 with Flow("Diagnostic Log Flow") as flow:
-    # working_dir = ""
-    # flow.run_config = LocalRun(
-    #             working_dir=f"{working_dir}",
-    #             env={"PYTHONPATH": ""},
-    #         )
-    flow.run_config = LocalRun()
+    working_dir = ""
+    flow.run_config = LocalRun(
+        working_dir=f"{working_dir}",
+        env={"PREFECT__USER_CONFIG_PATH": f"{working_dir}/mfp_config.toml"}
+    )
     a = log_config_information()
     b = log_flow_information(flow)
