@@ -9,7 +9,7 @@ import sqlite3
 from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import jsonpickle
 import myfitnesspal
@@ -78,6 +78,47 @@ def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> S
     return new_state
 
 
+def try_parse_date_str(date_str):
+    available_formats = ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%Y")
+    for format in available_formats:
+        try:
+            return datetime.datetime.strptime(date_str, format)
+        except ValueError:
+            pass
+    raise ValueError(f"No available format found to parse <{date_str}>.")
+
+
+def parse_date_parameters(
+        from_date_str: Union[str, None],
+        to_date_str: Union[str, None]
+) -> Tuple[datetime.date]:
+    today = datetime.date.today()
+    default_from_date = today - timedelta(days=6)
+    default_to_date = today - timedelta(days=1)
+
+    if from_date_str is None:
+        from_date = default_from_date
+    else:
+        from_date = try_parse_date_str(from_date_str).date()
+    if to_date_str is None:
+        to_date = default_to_date
+    else:
+        to_date = try_parse_date_str(to_date_str).date()
+
+    return (from_date, to_date)
+
+
+@task(name="Prepare Dates Sequence to Extract")
+def generate_dates_to_extract(
+    from_date_str: str, to_date_str: str
+) -> List[datetime.date]:
+    """Generate a list of dates between a start date and end date."""
+    from_date, to_date = parse_date_parameters(from_date_str, to_date_str)
+    delta_days = (to_date - from_date).days
+    #  including both the starting and ending date
+    return [from_date + timedelta(days=i) for i in range(delta_days + 1)]
+
+
 @task(name="Prepare MFP Database Directory")
 def create_mfp_db_directory(db):
     """Prepare the database directory."""
@@ -87,22 +128,10 @@ def create_mfp_db_directory(db):
     db_path.mkdir(parents=True, exist_ok=True)
 
 
-@task(name="Prepare Dates Sequence to Extract")
-def generate_dates_to_extract(
-    from_date_str: str, to_date_str: str
-) -> List[datetime.date]:
-    """Generate a list of dates between a start date and end date."""
-    from_date = datetime.datetime.strptime(from_date_str, "%Y/%m/%d").date()
-    to_date = datetime.datetime.strptime(to_date_str, "%Y/%m/%d").date()
-    delta_days = (to_date - from_date).days
-    #  including both the starting and ending date
-    return [from_date + timedelta(days=i) for i in range(delta_days + 1)]
-
-
 @task(
     name="Get Day Record for Date <- (myfitnesspal)",
     timeout=15,
-    max_retries=10,
+    max_retries=5,
     retry_delay=timedelta(seconds=5),
 )
 def get_myfitnesspal_day(
@@ -128,21 +157,18 @@ def get_myfitnesspal_day(
 @task(
     name="Get Measure Records for Dates <- (myfitnesspal)",
     timeout=15,
-    max_retries=10,
+    max_retries=5,
     retry_delay=timedelta(seconds=5),
 )
 def get_myfitnesspal_measure(
     measure: str,
     username: str,
     password: str,
-    from_date_str: str,
-    to_date_str: str,
+    dates_to_extract: List[datetime.date],
 ) -> List[Tuple[str, datetime.date, str, float]]:
     """Get the myfitnesspal measure records for a provided measure and time range."""
     logger = prefect.context.get("logger")
-    from_date = datetime.datetime.strptime(from_date_str, "%Y/%m/%d").date()
-    to_date = datetime.datetime.strptime(to_date_str, "%Y/%m/%d").date()
-
+    from_date, to_date = min(dates_to_extract), max(dates_to_extract)
     client = myfitnesspal.Client(username=username, password=password)
     try:
         records = client.get_measurements(measure, from_date, to_date)
@@ -426,36 +452,30 @@ def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
         conn.commit()
 
 
-def register_etl_flow():
+def get():
     with Flow("MyFitnessPaw ETL Flow", state_handlers=[slack_notify_on_failure]) as flow:
         # working_dir: Working directory in which to start the process, must already exist.
         #              If not provided, will be run in the same directory as the agent.
+        working_dir = ""
         flow.run_config = LocalRun(
-            working_dir="",
-            env={"PREFECT__USER_CONFIG_PATH": f"{working_dir}/mfp_config.toml"},
+            working_dir=working_dir,
+            env={
+                "PREFECT__USER_CONFIG_PATH": f"{working_dir}/mfp_config.toml",
+                "PYTHONPATH": f"{working_dir}/.venv/lib/python3.9/site-packages",
+            },
         )
 
         #  Gather required parameters/secrets
+        from_date_str = Parameter(name="from_date", default=None)
+        to_date_str = Parameter(name="from_date", default=None)
         username = PrefectSecret("MYFITNESSPAL_USERNAME")
         password = PrefectSecret("MYFITNESSPAL_PASSWORD")
-        from_date = Parameter(
-            name="from_date",
-            required=False,
-            default=(datetime.date.today() - timedelta(days=5)).strftime("%Y/%m/%d"),
-        )
-        to_date = Parameter(
-            name="to_date",
-            required=False,
-            default=(datetime.date.today() - timedelta(days=1)).strftime("%Y/%m/%d"),
-        )
-        measures = Parameter(
-            name="measures",
-            required=False,
-            default=["Weight"],
-        )
-        db_conn_str = Parameter(
-            name="sqlite_db_location", required=False, default="database/mfp_db.sqlite"
-        )
+        measures = Parameter(name="measures", default=["Weight"])
+        db_conn_str = Parameter(name="sqlite_db_location", default="database/mfp_db.sqlite")
+
+        username = PrefectSecret("MYFITNESSPAL_USERNAME_???")
+        password = PrefectSecret("MYFITNESSPAL_PASSWORD_???")
+
         #  Ensure database directory is available:
         database_dir_exists = create_mfp_db_directory(db=db_conn_str)
 
@@ -465,7 +485,7 @@ def register_etl_flow():
         )
 
         #  Prepeare a sequence of dates to be extracted and get the day info for each:
-        dates_to_extract = generate_dates_to_extract(from_date, to_date)
+        dates_to_extract = generate_dates_to_extract(from_date_str, to_date_str)
         extracted_days = get_myfitnesspal_day.map(
             date=dates_to_extract,
             username=unmapped(username),
@@ -538,8 +558,7 @@ def register_etl_flow():
             measure=mapped(measures),
             username=username,
             password=password,
-            from_date_str=from_date,
-            to_date_str=to_date,
+            dates_to_extract=dates_to_extract,
         )
         #  Here check or delete all measurements between from_date and to_date for the selected measures.
         measurements_load_state = mfp_insert_measurements(
