@@ -5,6 +5,10 @@ use_local_secrets = true
 # Local storage for myfitnesspal user logins
 [context.secrets]
 
-MYFITNESSPAL_USERNAME = ""
-MYFITNESSPAL_PASSWORD = ""
+# For each user to scrape this config file should have the following two lines
+# with <USER> replaced by the user id that MyFitnessPaw's flow will use and 
+# their username (email) and password for login in myfitnesspal.
+MYFITNESSPAL_USERNAME_<USER> = ""
+MYFITNESSPAL_PASSWORD_<USER> = ""
+
 MYFITNESSPAW_SLACK_WEBHOOK_URL = ""

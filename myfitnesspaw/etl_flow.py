@@ -349,7 +349,7 @@ def mfp_select_raw_days(
     username: str, dates: Sequence[datetime.date]
 ) -> List[Tuple[str, datetime.date, str]]:
     """Select raw day entries for username and provided dates."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     mfp_existing_days = []
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
@@ -365,7 +365,7 @@ def mfp_select_raw_days(
 @task(name="Load Raw Day Records -> (MyFitnessPaw)")
 def mfp_insert_raw_days(days_values: Sequence[Tuple]) -> None:
     """Insert a sequence of day values in the database."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
@@ -375,7 +375,7 @@ def mfp_insert_raw_days(days_values: Sequence[Tuple]) -> None:
 @task(name="Load Notes Records -> (MyFitnessPaw)")
 def mfp_insert_notes(notes_values: Sequence[Tuple]) -> None:
     """Insert a sequence of note values in the database."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_note_record, notes_values)
@@ -385,7 +385,7 @@ def mfp_insert_notes(notes_values: Sequence[Tuple]) -> None:
 @task(name="Load Water Records -> (MyFitnessPaw)")
 def mfp_insert_water(water_values: Sequence[Tuple]) -> None:
     """Insert a sequence of water records values in the database."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_water_record, water_values)
@@ -395,7 +395,7 @@ def mfp_insert_water(water_values: Sequence[Tuple]) -> None:
 @task(name="Load Goals Records -> (MyFitnessPaw)")
 def mfp_insert_goals(goals_values: Sequence[Tuple]) -> None:
     """Insert a sequence of goals records in the database."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_goals_record, goals_values)
@@ -405,7 +405,7 @@ def mfp_insert_goals(goals_values: Sequence[Tuple]) -> None:
 @task(name="Load Meal Records -> (MyFitnessPaw)")
 def mfp_insert_meals(meals_values: Sequence[Tuple]) -> None:
     """Insert a sequence of meal values in the database."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_meal_record, meals_values)
@@ -415,7 +415,7 @@ def mfp_insert_meals(meals_values: Sequence[Tuple]) -> None:
 @task(name="Load MealEntry Records -> (MyFitnessPaw)")
 def mfp_insert_mealentries(mealentries_values: Sequence[Tuple]) -> None:
     """Insert a sequence of meal entry values in the database."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_mealentry_record, mealentries_values)
@@ -425,7 +425,7 @@ def mfp_insert_mealentries(mealentries_values: Sequence[Tuple]) -> None:
 @task(name="Load CardioExercises Records -> (MyFitnessPaw)")
 def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple]) -> None:
     """Insert a sequence of cardio exercise entries in the database."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_cardioexercises_command, cardio_list)
@@ -435,7 +435,7 @@ def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple]) -> None:
 @task(name="Load StrengthExercises Records -> (MyFitnessPaw)")
 def mfp_insert_strength_exercises(strength_list: Sequence[Tuple]) -> None:
     """Insert a sequence of strength exercise values in the database."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_strengthexercises_command, strength_list)
@@ -445,17 +445,15 @@ def mfp_insert_strength_exercises(strength_list: Sequence[Tuple]) -> None:
 @task(name="Load Measurement Records -> (MyFitnessPaw)")
 def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
     """Insert a sequence of measurements in the database."""
-    db = prefect.context.parameters.get("sqlite_db_location", None)
+    db = prefect.context.parameters.get("db_location", None)
     with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
         cursor.execute("PRAGMA foreign_keys = YES;")
         cursor.executemany(sql.insert_measurements_command, measurements)
         conn.commit()
 
 
-def get():
-    with Flow("MyFitnessPaw ETL Flow", state_handlers=[slack_notify_on_failure]) as flow:
-        # working_dir: Working directory in which to start the process, must already exist.
-        #              If not provided, will be run in the same directory as the agent.
+def get_flow_for_user(user):
+    with Flow(f"MyFitnessPaw ETL <{user.upper()}>", state_handlers=[slack_notify_on_failure]) as flow:
         working_dir = ""
         flow.run_config = LocalRun(
             working_dir=working_dir,
@@ -468,13 +466,11 @@ def get():
         #  Gather required parameters/secrets
         from_date_str = Parameter(name="from_date", default=None)
         to_date_str = Parameter(name="from_date", default=None)
-        username = PrefectSecret("MYFITNESSPAL_USERNAME")
-        password = PrefectSecret("MYFITNESSPAL_PASSWORD")
         measures = Parameter(name="measures", default=["Weight"])
-        db_conn_str = Parameter(name="sqlite_db_location", default="database/mfp_db.sqlite")
+        db_conn_str = Parameter(name="db_location", default="database/mfp_db.sqlite")
 
-        username = PrefectSecret("MYFITNESSPAL_USERNAME_???")
-        password = PrefectSecret("MYFITNESSPAL_PASSWORD_???")
+        username = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
+        password = PrefectSecret(f"MYFITNESSPAL_PASSWORD_{user.upper()}")
 
         #  Ensure database directory is available:
         database_dir_exists = create_mfp_db_directory(db=db_conn_str)
