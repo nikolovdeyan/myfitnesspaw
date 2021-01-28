@@ -1,10 +1,7 @@
 import os
-import datetime
-from datetime import timedelta
 
 import prefect
-from prefect import Flow, Parameter, task
-from prefect.storage.local import Local
+from prefect import Flow, task
 from prefect.run_configs import LocalRun
 
 
@@ -40,7 +37,7 @@ with Flow("Diagnostic Log Flow") as flow:
     working_dir = ""
     flow.run_config = LocalRun(
         working_dir=f"{working_dir}",
-        env={"PREFECT__USER_CONFIG_PATH": f"{working_dir}/mfp_config.toml"}
+        env={"PREFECT__USER_CONFIG_PATH": f"{working_dir}/mfp_config.toml"},
     )
     a = log_config_information()
     b = log_flow_information(flow)

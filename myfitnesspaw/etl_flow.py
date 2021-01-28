@@ -19,9 +19,9 @@ from myfitnesspal.exercise import Exercise
 from myfitnesspal.meal import Meal
 from prefect import Flow, Parameter, flatten, mapped, task, unmapped
 from prefect.engine.state import State
+from prefect.run_configs import LocalRun
 from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.tasks.secrets import PrefectSecret
-from prefect.run_configs import LocalRun
 
 from . import sql
 
@@ -89,9 +89,8 @@ def try_parse_date_str(date_str):
 
 
 def parse_date_parameters(
-        from_date_str: Union[str, None],
-        to_date_str: Union[str, None]
-) -> Tuple[datetime.date]:
+    from_date_str: Union[str, None], to_date_str: Union[str, None]
+) -> Tuple[datetime.date, datetime.date]:
     today = datetime.date.today()
     default_from_date = today - timedelta(days=6)
     default_to_date = today - timedelta(days=1)
@@ -453,7 +452,9 @@ def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
 
 
 def get_flow_for_user(user):
-    with Flow(f"MyFitnessPaw ETL <{user.upper()}>", state_handlers=[slack_notify_on_failure]) as flow:
+    with Flow(
+        f"MyFitnessPaw ETL <{user.upper()}>", state_handlers=[slack_notify_on_failure]
+    ) as flow:
         working_dir = ""
         flow.run_config = LocalRun(
             working_dir=working_dir,
@@ -462,102 +463,69 @@ def get_flow_for_user(user):
                 "PYTHONPATH": f"{working_dir}/.venv/lib/python3.9/site-packages",
             },
         )
-
-        #  Gather required parameters/secrets
         from_date_str = Parameter(name="from_date", default=None)
         to_date_str = Parameter(name="from_date", default=None)
         measures = Parameter(name="measures", default=["Weight"])
         db_conn_str = Parameter(name="db_location", default="database/mfp_db.sqlite")
-
         username = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
         password = PrefectSecret(f"MYFITNESSPAL_PASSWORD_{user.upper()}")
-
-        #  Ensure database directory is available:
         database_dir_exists = create_mfp_db_directory(db=db_conn_str)
-
-        #  Pass connection string to database creation task at runtime:
         database_exists = create_mfp_database(
             db=db_conn_str, upstream_tasks=[database_dir_exists]
         )
-
-        #  Prepeare a sequence of dates to be extracted and get the day info for each:
         dates_to_extract = generate_dates_to_extract(from_date_str, to_date_str)
         extracted_days = get_myfitnesspal_day.map(
             date=dates_to_extract,
             username=unmapped(username),
             password=unmapped(password),
         )
-
-        #  The days must be serialized in order to be stored in the database.
         serialized_extracted_days = serialize_myfitnesspal_days(extracted_days)
-
-        #  Select the days that we already have in the database for the date range:
         mfp_existing_days = mfp_select_raw_days(
             username=username,
             dates=dates_to_extract,
             upstream_tasks=[database_exists],
         )
-
-        #  Compare the existing records with the extracted records and filter out what
-        #  is already available. Load only the new or changed raw days:
         serialized_days_to_process = filter_new_or_changed_records(
             extracted_records=serialized_extracted_days,
             local_records=mfp_existing_days,
         )
         raw_days_load_state = mfp_insert_raw_days(serialized_days_to_process)
-
-        #  The sequence of filtered records to process will be deserialized before
-        #  populating the reporting table to make extracting the information easier.
         days_to_process = deserialize_records_to_process(
-            serialized_days=serialized_days_to_process, upstream_tasks=[raw_days_load_state]
+            serialized_days=serialized_days_to_process,
+            upstream_tasks=[raw_days_load_state],
         )
-
-        #  Extract and load notes for each day:
-        #  Currently only food notes are being processed.
         notes_records = extract_notes_from_days(days_to_process)
-        notes_load_state = mfp_insert_notes(notes_records)
-
-        #  Extract and load water intake records for each day:
+        notes_load_state = mfp_insert_notes(notes_records)  # NOQA
         water_records = extract_water_from_days(days_to_process)
-        water_load_state = mfp_insert_water(water_records)
-
-        #  Extract and load daily goals:
+        water_load_state = mfp_insert_water(water_records)  # NOQA
         goals_records = extract_goals_from_days(days_to_process)
-        goals_load_state = mfp_insert_goals(goals_records)
-
-        #  Prepare a sequences of all meals and meal entries and load:
+        goals_load_state = mfp_insert_goals(goals_records)  # NOQA
         meals_to_process = extract_meals_from_days(days_to_process)
         meals_records = extract_meal_records_from_meals(meals_to_process)
         mealentries_records = extract_mealentry_records_from_meals(meals_to_process)
         meals_load_state = mfp_insert_meals(meals_records)
-        mealentries_load_state = mfp_insert_mealentries(
+        mealentries_load_state = mfp_insert_mealentries(  # NOQA
             mealentries_records, upstream_tasks=[meals_load_state]
         )
-
-        #  Extract and load exercises:
-        cardio_exercises_to_process = extract_cardio_exercises_from_days(days_to_process)
+        cardio_exercises_to_process = extract_cardio_exercises_from_days(
+            days_to_process
+        )
         strength_exercises_to_process = extract_strength_exercises_from_days(
             days_to_process
         )
-        cardio_exercises_load_state = mfp_insert_cardio_exercises(
+        cardio_exercises_load_state = mfp_insert_cardio_exercises(  # NOQA
             cardio_list=cardio_exercises_to_process,
         )
-        strength_exercises_load_state = mfp_insert_strength_exercises(
+        strength_exercises_load_state = mfp_insert_strength_exercises(  # NOQA
             strength_list=strength_exercises_to_process,
         )
-
-        #  Measurements are extracted through a separate request to myfitnesspal unrelated
-        #  to the Day object we are working with in the previous steps. There is a separate
-        #  request made for each of the measures the user is tracking and the result is an
-        #  OrderedDict with the measurements for the whole date range.
         measurements_records = get_myfitnesspal_measure(
             measure=mapped(measures),
             username=username,
             password=password,
             dates_to_extract=dates_to_extract,
         )
-        #  Here check or delete all measurements between from_date and to_date for the selected measures.
-        measurements_load_state = mfp_insert_measurements(
+        measurements_load_state = mfp_insert_measurements(  # NOQA
             measurements=flatten(measurements_records),
             upstream_tasks=[database_exists],
         )

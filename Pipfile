@@ -9,6 +9,14 @@ jsonpickle = "*"
 myfitnesspal = "*"
 
 [dev-packages]
+isort = "*"
+black = "*"
+flake8 = "*"
+pre-commit = "*"
+mypy = "*"
 
 [requires]
 python_version = "3.9"
+
+[pipenv]
+allow_prereleases = true
