@@ -19,4 +19,4 @@ MYFITNESSPAW_SLACK_WEBHOOK_URL = ""
 MYFITNESSPAW_DROPBOX_ACCESS_TOKEN = ""
 
 [myfitnesspaw]
-mfpdb_path = "database/mfp_db.sqlite"
+mfp_db_path = "database/mfp_db.sqlite"

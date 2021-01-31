@@ -15,18 +15,18 @@ def select_fifo_backups_to_delete(max_num_backups, files_list):
     if len(timestamps) <= max_num_backups:
         return []
     cut_index = len(timestamps) - max_num_backups
-    return [f"mfpdb_backup_{ts.strftime('%Y-%m-%d')}" for ts in timestamps[:cut_index]]
+    return [f"mfp_db_backup_{ts.strftime('%Y-%m-%d')}" for ts in timestamps[:cut_index]]
 
 
 @task
-def mfpdb_dropbox_backups_cleanup(files_list):
+def mfp_db_dropbox_backups_cleanup(files_list):
     logger = prefect.context.get("logger")
     files_to_delete = select_fifo_backups_to_delete(5, files_list)
     if not files_to_delete:
         logger.info("Maximum number of backups not reached. No files deleted.")
         return
     dbx_token = PrefectSecret("MYFITNESSPAW_DROPBOX_ACCESS_TOKEN")
-    mfp_dir_path = "/myfitnesspaw/mfpdb_backups"
+    mfp_dir_path = "/myfitnesspaw/mfp_db_backups"
 
     dbx = dropbox.Dropbox(dbx_token.run())
     deleted = []
@@ -38,9 +38,9 @@ def mfpdb_dropbox_backups_cleanup(files_list):
 
 
 @task
-def list_mfpdb_dropbox_dir():
+def list_mfp_db_dropbox_dir():
     dbx_token = PrefectSecret("MYFITNESSPAW_DROPBOX_ACCESS_TOKEN")
-    mfp_dir_path = "/myfitnesspaw/mfpdb_backups"
+    mfp_dir_path = "/myfitnesspaw/mfp_db_backups"
     dbx = dropbox.Dropbox(dbx_token.run())
     res = dbx.files_list_folder(mfp_dir_path)
     files_list = [f.name for f in res.entries]
@@ -48,12 +48,12 @@ def list_mfpdb_dropbox_dir():
 
 
 @task(name="Backup MFP Database to Dropbox")
-def make_mfpdb_dropbox_backup():
+def make_mfp_db_dropbox_backup():
     """Upload a database copy to a dropbox location."""
     dbx_token = PrefectSecret("MYFITNESSPAW_DROPBOX_ACCESS_TOKEN")
     timestamp = datetime.now().strftime("%Y-%m-%d")
-    source_path = prefect.config.myfitnesspaw.mfpdb_path
-    dest_path = f"/myfitnesspaw/mfpdb_backups/mfpdb_backup_{timestamp}"
+    source_path = prefect.config.myfitnesspaw.mfp_db_path
+    dest_path = f"/myfitnesspaw/mfp_db_backups/mfp_db_backup_{timestamp}"
 
     dbx = dropbox.Dropbox(dbx_token.run())
     with open(source_path, "rb") as f:
@@ -66,7 +66,7 @@ every_2nd_day_schedule = CronSchedule("0 6 */2 * *")
 weekly_schedule = CronSchedule("0 6 * * 1")
 
 
-with Flow("MFP Database Backup to Dropbox") as flow:
+with Flow("MyFitnessPaw DB Backup") as flow:
     working_dir = Path().absolute()
     mfp_config_path = working_dir.joinpath("mfp_config.toml")
     pythonpath = working_dir.joinpath(".venv", "lib", "python3.9", "site-packages")
@@ -77,6 +77,6 @@ with Flow("MFP Database Backup to Dropbox") as flow:
             "PYTHONPATH": pythonpath,
         },
     )
-    backup_result = make_mfpdb_dropbox_backup()
-    bup_files_list = list_mfpdb_dropbox_dir()
-    res = mfpdb_dropbox_backups_cleanup(bup_files_list)
+    backup_result = make_mfp_db_dropbox_backup()
+    bup_files_list = list_mfp_db_dropbox_dir()
+    res = mfp_db_dropbox_backups_cleanup(bup_files_list)
