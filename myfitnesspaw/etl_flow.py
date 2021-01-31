@@ -20,7 +20,6 @@ from myfitnesspal.meal import Meal
 from prefect import Flow, Parameter, flatten, mapped, task, unmapped
 from prefect.engine.state import State
 from prefect.run_configs import LocalRun
-from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.tasks.secrets import PrefectSecret
 
 from . import sql
@@ -48,7 +47,7 @@ class MaterializedDay:
         self.water = water
 
 
-create_mfp_database_script = f"""
+create_mfp_db_script = f"""
 {sql.create_raw_day_table}
 {sql.create_notes_table}
 {sql.create_water_table}
@@ -59,10 +58,6 @@ create_mfp_database_script = f"""
 {sql.create_strengthexercises_table}
 {sql.create_measurements_table}
 """
-create_mfp_database = SQLiteScript(
-    name="Create MyFitnessPaw DB (if not existing)",
-    script=create_mfp_database_script,
-)
 
 
 def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> State:
@@ -89,7 +84,7 @@ def try_parse_date_str(date_str):
 
 
 def parse_date_parameters(
-    from_date_str: Union[str, None], to_date_str: Union[str, None]
+    from_date_str: Union[Parameter, None], to_date_str: Union[Parameter, None]
 ) -> Tuple[datetime.date, datetime.date]:
     today = datetime.date.today()
     default_from_date = today - timedelta(days=6)
@@ -117,14 +112,17 @@ def generate_dates_to_extract(
     return [from_date + timedelta(days=i) for i in range(delta_days + 1)]
 
 
-@task(name="Prepare MFP Database Directory")
-def create_mfp_db_directory():
-    """Prepare the database directory."""
+@task(name="Prepare MFP Database")
+def create_mfp_database():
+    """Prepare the database directory and file."""
     db = prefect.config.myfitnesspaw.mfp_db_path
     db_dir = "/".join([d for d in db.split("/")[:-1]])
     root_dir = Path().cwd()
     db_path = root_dir.joinpath(Path(db_dir))
     db_path.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
+        cursor.executescript(create_mfp_db_script)
+        conn.commit()
 
 
 @task(
@@ -461,22 +459,18 @@ def get_flow_for_user(user):
         flow.run_config = LocalRun(
             working_dir=str(working_dir),
             env={
-                "PREFECT__USER_CONFIG_PATH": mfp_config_path,
-                "PYTHONPATH": pythonpath,
+                "PREFECT__USER_CONFIG_PATH": str(mfp_config_path),
+                "PYTHONPATH": str(pythonpath),
             },
         )
         from_date, to_date = parse_date_parameters(
-            from_date_str=Parameter(name="from_date", default=None),
-            to_date_str=Parameter(name="to_date", default=None),
+            Parameter(name="from_date", default=None),
+            Parameter(name="to_date", default=None),
         )
         measures = Parameter(name="measures", default=["Weight"])
         username = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
         password = PrefectSecret(f"MYFITNESSPAL_PASSWORD_{user.upper()}")
-        database_dir_exists = create_mfp_db_directory()
-        database_exists = create_mfp_database(
-            db=prefect.config.myfitnesspaw.mfp_db_path,
-            upstream_tasks=[database_dir_exists],
-        )
+        db_exists = create_mfp_database()
         dates_to_extract = generate_dates_to_extract(from_date, to_date)
         extracted_days = get_myfitnesspal_day.map(
             date=dates_to_extract,
@@ -487,7 +481,7 @@ def get_flow_for_user(user):
         mfp_existing_days = mfp_select_raw_days(
             username=username,
             dates=dates_to_extract,
-            upstream_tasks=[database_exists],
+            upstream_tasks=[db_exists],
         )
         serialized_days_to_process = filter_new_or_changed_records(
             extracted_records=serialized_extracted_days,
@@ -531,6 +525,6 @@ def get_flow_for_user(user):
         )
         measurements_load_state = mfp_insert_measurements(  # NOQA
             measurements=flatten(measurements_records),
-            upstream_tasks=[database_exists],
+            upstream_tasks=[db_exists],
         )
     return flow
