@@ -83,6 +83,7 @@ def try_parse_date_str(date_str):
     raise ValueError(f"No available format found to parse <{date_str}>.")
 
 
+@task(name="Parse From and To Dates Parameters")
 def parse_date_parameters(
     from_date_str: Union[Parameter, None], to_date_str: Union[Parameter, None]
 ) -> Tuple[datetime.date, datetime.date]:
@@ -464,8 +465,8 @@ def get_flow_for_user(user):
             },
         )
         from_date, to_date = parse_date_parameters(
-            Parameter(name="from_date", default=None),
-            Parameter(name="to_date", default=None),
+            from_date_str=Parameter(name="from_date", default=None),
+            to_date_str=Parameter(name="to_date", default=None),
         )
         measures = Parameter(name="measures", default=["Weight"])
         username = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")

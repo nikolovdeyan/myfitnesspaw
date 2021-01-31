@@ -15,6 +15,8 @@ black = "*"
 flake8 = "*"
 pre-commit = "*"
 mypy = "*"
+prefect = {extras = ["viz"], version = "*"}
+pytest = "*"
 
 [requires]
 python_version = "3.9"
