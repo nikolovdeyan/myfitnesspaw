@@ -8,7 +8,6 @@ import datetime
 import sqlite3
 from contextlib import closing
 from datetime import timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import jsonpickle
@@ -19,10 +18,9 @@ from myfitnesspal.exercise import Exercise
 from myfitnesspal.meal import Meal
 from prefect import Flow, Parameter, flatten, mapped, task, unmapped
 from prefect.engine.state import State
-from prefect.run_configs import LocalRun
 from prefect.tasks.secrets import PrefectSecret
 
-from . import sql
+import myfitnesspaw as mfp
 
 
 class MaterializedDay:
@@ -47,19 +45,6 @@ class MaterializedDay:
         self.water = water
 
 
-create_mfp_db_script = f"""
-{sql.create_raw_day_table}
-{sql.create_notes_table}
-{sql.create_water_table}
-{sql.create_goals_table}
-{sql.create_meals_table}
-{sql.create_mealentries_table}
-{sql.create_cardioexercises_table}
-{sql.create_strengthexercises_table}
-{sql.create_measurements_table}
-"""
-
-
 def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> State:
     """State handler for Slack notifications in case of flow failure."""
     logger = prefect.context.get("logger")
@@ -73,7 +58,8 @@ def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> S
     return new_state
 
 
-def try_parse_date_str(date_str):
+def try_parse_date_str(date_str: str) -> datetime.datetime:
+    """Try to parse a date string using a set of provided formats."""
     available_formats = ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%Y")
     for format in available_formats:
         try:
@@ -94,11 +80,11 @@ def parse_date_parameters(
     if from_date_str is None:
         from_date = default_from_date
     else:
-        from_date = try_parse_date_str(from_date_str).date()
+        from_date = try_parse_date_str(from_date_str.run()).date()
     if to_date_str is None:
         to_date = default_to_date
     else:
-        to_date = try_parse_date_str(to_date_str).date()
+        to_date = try_parse_date_str(to_date_str.run()).date()
 
     return (from_date, to_date)
 
@@ -116,13 +102,19 @@ def generate_dates_to_extract(
 @task(name="Prepare MFP Database")
 def create_mfp_database():
     """Prepare the database directory and file."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    db_dir = "/".join([d for d in db.split("/")[:-1]])
-    root_dir = Path().cwd()
-    db_path = root_dir.joinpath(Path(db_dir))
-    db_path.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.executescript(create_mfp_db_script)
+    create_mfp_db_script = f"""
+    {mfp.sql.create_raw_day_table}
+    {mfp.sql.create_notes_table}
+    {mfp.sql.create_water_table}
+    {mfp.sql.create_goals_table}
+    {mfp.sql.create_meals_table}
+    {mfp.sql.create_mealentries_table}
+    {mfp.sql.create_cardioexercises_table}
+    {mfp.sql.create_strengthexercises_table}
+    {mfp.sql.create_measurements_table}
+    """
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.executescript(create_mfp_db_script)
         conn.commit()
 
 
@@ -347,13 +339,12 @@ def mfp_select_raw_days(
     username: str, dates: Sequence[datetime.date]
 ) -> List[Tuple[str, datetime.date, str]]:
     """Select raw day entries for username and provided dates."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
     mfp_existing_days = []
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
         for date in dates:
-            cursor.execute(sql.select_rawdaydata_record, (username, date))
-            result = cursor.fetchone()
+            c.execute(mfp.sql.select_rawdaydata_record, (username, date))
+            result = c.fetchone()
             day_json = result[0] if result else None
             day_record = (username, date, day_json)
             mfp_existing_days.append(day_record)
@@ -363,107 +354,90 @@ def mfp_select_raw_days(
 @task(name="Load Raw Day Records -> (MyFitnessPaw)")
 def mfp_insert_raw_days(days_values: Sequence[Tuple]) -> None:
     """Insert a sequence of day values in the database."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
-        cursor.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.executemany(mfp.sql.insert_or_replace_rawdaydata_record, days_values)
         conn.commit()
 
 
 @task(name="Load Notes Records -> (MyFitnessPaw)")
 def mfp_insert_notes(notes_values: Sequence[Tuple]) -> None:
     """Insert a sequence of note values in the database."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
-        cursor.executemany(sql.insert_note_record, notes_values)
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.executemany(mfp.sql.insert_note_record, notes_values)
         conn.commit()
 
 
 @task(name="Load Water Records -> (MyFitnessPaw)")
 def mfp_insert_water(water_values: Sequence[Tuple]) -> None:
     """Insert a sequence of water records values in the database."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
-        cursor.executemany(sql.insert_water_record, water_values)
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.executemany(mfp.sql.insert_water_record, water_values)
         conn.commit()
 
 
 @task(name="Load Goals Records -> (MyFitnessPaw)")
 def mfp_insert_goals(goals_values: Sequence[Tuple]) -> None:
     """Insert a sequence of goals records in the database."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
-        cursor.executemany(sql.insert_goals_record, goals_values)
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.executemany(mfp.sql.insert_goals_record, goals_values)
         conn.commit()
 
 
 @task(name="Load Meal Records -> (MyFitnessPaw)")
 def mfp_insert_meals(meals_values: Sequence[Tuple]) -> None:
     """Insert a sequence of meal values in the database."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
-        cursor.executemany(sql.insert_meal_record, meals_values)
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.executemany(mfp.sql.insert_meal_record, meals_values)
         conn.commit()
 
 
 @task(name="Load MealEntry Records -> (MyFitnessPaw)")
 def mfp_insert_mealentries(mealentries_values: Sequence[Tuple]) -> None:
     """Insert a sequence of meal entry values in the database."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
-        cursor.executemany(sql.insert_mealentry_record, mealentries_values)
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.executemany(mfp.sql.insert_mealentry_record, mealentries_values)
         conn.commit()
 
 
 @task(name="Load CardioExercises Records -> (MyFitnessPaw)")
 def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple]) -> None:
     """Insert a sequence of cardio exercise entries in the database."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
-        cursor.executemany(sql.insert_cardioexercises_command, cardio_list)
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.executemany(mfp.sql.insert_cardioexercises_command, cardio_list)
         conn.commit()
 
 
 @task(name="Load StrengthExercises Records -> (MyFitnessPaw)")
 def mfp_insert_strength_exercises(strength_list: Sequence[Tuple]) -> None:
     """Insert a sequence of strength exercise values in the database."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
-        cursor.executemany(sql.insert_strengthexercises_command, strength_list)
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.executemany(mfp.sql.insert_strengthexercises_command, strength_list)
         conn.commit()
 
 
 @task(name="Load Measurement Records -> (MyFitnessPaw)")
 def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
     """Insert a sequence of measurements in the database."""
-    db = prefect.config.myfitnesspaw.mfp_db_path
-    with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-        cursor.execute("PRAGMA foreign_keys = YES;")
-        cursor.executemany(sql.insert_measurements_command, measurements)
+    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.executemany(mfp.sql.insert_measurements_command, measurements)
         conn.commit()
 
 
-def get_flow_for_user(user):
+def get_flow_for_user(user) -> Flow:
+    """Return a flow that gets the user data from myfitnesspal into the local database."""
     with Flow(
         f"MyFitnessPaw ETL <{user.upper()}>", state_handlers=[slack_notify_on_failure]
     ) as flow:
-        working_dir = Path().absolute()
-        mfp_config_path = working_dir.joinpath("mfp_config.toml")
-        pythonpath = working_dir.joinpath(".venv", "lib", "python3.9", "site-packages")
-        flow.run_config = LocalRun(
-            working_dir=str(working_dir),
-            env={
-                "PREFECT__USER_CONFIG_PATH": str(mfp_config_path),
-                "PYTHONPATH": str(pythonpath),
-            },
-        )
+        flow.run_config = mfp.get_local_run_config()
         from_date, to_date = parse_date_parameters(
             from_date_str=Parameter(name="from_date", default=None),
             to_date_str=Parameter(name="to_date", default=None),
