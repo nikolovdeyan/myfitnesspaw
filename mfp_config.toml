@@ -15,16 +15,11 @@ EMAIL_PASSWORD = ""
 # Example:
 # MYFITNESSPAL_USERNAME_DOE = "john.doe@abc.com"
 # MYFITNESSPAL_PASSWORD_DOE = "correcthorsebatterystaple"
-MYFITNESSPAL_USERNAME_DEO = ""
-MYFITNESSPAL_PASSWORD_DEO = ""
+MYFITNESSPAL_USERNAME_USER = ""
+MYFITNESSPAL_PASSWORD_USER = ""
 
-# Credentials for user vasko
-MYFITNESSPAL_USERNAME_VASKO = ""
-MYFITNESSPAL_PASSWORD_VASKO = ""
-
-# Hook for #deo
 MYFITNESSPAW_SLACK_WEBHOOK_URL = ""
 MYFITNESSPAW_DROPBOX_ACCESS_TOKEN = ""
 
 [myfitnesspaw]
-mfp_db_path = "database/mfp_db.sqlite"
+mfp_db_file = "mfp_db.sqlite"
