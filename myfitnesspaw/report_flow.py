@@ -1,43 +1,48 @@
-import os
+from pathlib import Path
 
-import prefect
+import jinja2
 from prefect import Flow, task
 from prefect.run_configs import LocalRun
+from prefect.tasks.notifications.email_task import EmailTask
+from prefect.tasks.secrets import PrefectSecret
 
 
 @task
-def log_config_information():
-    logger = prefect.context.get("logger")
-    msg = f"""
-    Running in: {os.getcwd()}
-    ----
-    $PATH: {os.environ.get('PATH', 'N/A')}
-    $PYTHONPATH: {os.environ.get('PYTHONPATH', 'N/A')}
-    $PREFECT__CLOUD__AGENT__LABELS: {os.environ.get('PREFECT__CLOUD__AGENT__LABELS', 'N/A')}
-    -----
-    Prefect system information: {prefect.utilities.diagnostics.system_information()}
-    -----
-    Prefect environment: {prefect.utilities.diagnostics.environment_variables()}
-    -----
-    Prefect config: {prefect.context.config}
-    """
-    logger.info(msg)
+def prepare_template(templates_dir):
+    template_loader = jinja2.FileSystemLoader(searchpath=templates_dir)
+    template_env = jinja2.Environment(loader=template_loader)
+    message = template_env.get_template("mailreport_base.html").render()
+    return message
 
 
 @task
-def log_flow_information(f):
-    logger = prefect.context.get("logger")
-    msg = f"""
-    Prefect flow information: {prefect.utilities.diagnostics.flow_information(f)}
-    """
-    logger.info(msg)
-
-
-with Flow("Diagnostic Log Flow") as flow:
-    working_dir = ""
-    flow.run_config = LocalRun(
-        working_dir=f"{working_dir}",
-        env={"PREFECT__USER_CONFIG_PATH": f"{working_dir}/mfp_config.toml"},
+def mail_user(usermail, message):
+    e = EmailTask(
+        subject="Greetings from Lisko Reporter!",
+        msg=message,
+        email_from="Lisko Reporting Service",
+        smtp_server="smtp.gmail.com",
+        smtp_port=465,
+        smtp_type="SSL",
     )
-    a = log_config_information()
-    b = log_flow_information(flow)
+    e.run(email_to=usermail)
+
+
+def get_mail_report(user):
+    with Flow("MyFitnessPaw Email Report") as flow:
+        working_dir = Path().absolute()
+        mfp_config_path = working_dir.joinpath("mfp_config.toml")
+        pythonpath = working_dir.joinpath(".venv", "lib", "python3.9", "site-packages")
+        flow.run_config = LocalRun(
+            working_dir=str(working_dir),
+            env={
+                "PREFECT__USER_CONFIG_PATH": str(mfp_config_path),
+                "PYTHONPATH": str(pythonpath),
+            },
+        )
+        usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
+        templates_dir = working_dir.joinpath("templates")
+        message = prepare_template(str(templates_dir))
+        r = mail_user(usermail, message)  # noqa
+
+    return flow

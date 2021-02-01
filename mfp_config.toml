@@ -5,16 +5,24 @@ use_local_secrets = true
 # Local storage for myfitnesspal user logins
 [context.secrets]
 
+# Credentials for the account that sends notification emails.
+EMAIL_USERNAME = ""
+EMAIL_PASSWORD = ""
+
 # For each user to scrape this config file should have the following two lines
 # with <USER> replaced by the user id that MyFitnessPaw's flow will use and 
 # their username (email) and password for login in myfitnesspal.
 # Example:
 # MYFITNESSPAL_USERNAME_DOE = "john.doe@abc.com"
 # MYFITNESSPAL_PASSWORD_DOE = "correcthorsebatterystaple"
+MYFITNESSPAL_USERNAME_DEO = ""
+MYFITNESSPAL_PASSWORD_DEO = ""
 
-MYFITNESSPAL_USERNAME_USER = ""
-MYFITNESSPAL_PASSWORD_USER = ""
+# Credentials for user vasko
+MYFITNESSPAL_USERNAME_VASKO = ""
+MYFITNESSPAL_PASSWORD_VASKO = ""
 
+# Hook for #deo
 MYFITNESSPAW_SLACK_WEBHOOK_URL = ""
 MYFITNESSPAW_DROPBOX_ACCESS_TOKEN = ""
 

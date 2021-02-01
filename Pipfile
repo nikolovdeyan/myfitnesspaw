@@ -8,6 +8,7 @@ prefect = "*"
 jsonpickle = "*"
 myfitnesspal = "*"
 dropbox = "*"
+jinja2 = "*"
 
 [dev-packages]
 isort = "*"
