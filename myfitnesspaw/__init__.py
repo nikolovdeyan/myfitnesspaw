@@ -1,37 +1,47 @@
+import sys
 from pathlib import Path
 
 import prefect
 from prefect.run_configs import LocalRun
 
+import myfitnesspaw
 from myfitnesspaw import backup_flow as backup  # noqa
 from myfitnesspaw import etl_flow as etl  # noqa
 from myfitnesspaw import report_flow as report  # noqa
 from myfitnesspaw import schedules  # noqa
 from myfitnesspaw import sql  # noqa
 
-with open(".python-version", "r") as f:
-    pyversion = f.readline().rsplit(".", 1)[0]  # discard minor version
-working_dir = Path().absolute()
-db_path = working_dir.joinpath("database")
-db_path.mkdir(parents=True, exist_ok=True)
-db_file = prefect.config.myfitnesspaw.mfp_db_file
+
+def setup_database(root_dir):
+    database_dir = root_dir.joinpath("database")
+    database_dir.mkdir(parents=True, exist_ok=True)
+    database_file = prefect.config.myfitnesspaw.mfp_db_file
+    database_path = database_dir.joinpath(database_file)
+    return database_path
 
 
-ROOT_DIR = str(working_dir)
-DB_PATH = str(db_path.joinpath(db_file))
-PYTHONPATH = str(
-    working_dir.joinpath(".venv", "lib", f"python{pyversion}", "site-packages")
+root_dir = Path().absolute()
+python_ver = f"{sys.version_info.major}.{sys.version_info.minor}"
+
+sitepackages_dir = root_dir.joinpath(
+    ".venv", "lib", f"python{python_ver}", "site-packages"
 )
-MFP_CONFIG_PATH = str(working_dir.joinpath("mfp_config.toml"))
-TEMPLATES_DIR = str(working_dir.joinpath("templates"))
+
+db_path = setup_database(root_dir)
+
+myfitnesspaw.ROOT_DIR = str(root_dir)
+myfitnesspaw.DB_PATH = str(db_path)
+myfitnesspaw.PYTHONPATH = str(sitepackages_dir)
+myfitnesspaw.MFP_CONFIG_PATH = str(root_dir.joinpath("mfp_config.toml"))
+myfitnesspaw.TEMPLATES_DIR = str(root_dir.joinpath("templates"))
 
 
 def get_local_run_config() -> LocalRun:
     """Return a LocalRun configuration to attach to a flow."""
     return LocalRun(
-        working_dir=ROOT_DIR,
+        working_dir=myfitnesspaw.ROOT_DIR,
         env={
-            "PREFECT__USER_CONFIG_PATH": MFP_CONFIG_PATH,
-            "PYTHONPATH": PYTHONPATH,
+            "PREFECT__USER_CONFIG_PATH": myfitnesspaw.MFP_CONFIG_PATH,
+            "PYTHONPATH": myfitnesspaw.PYTHONPATH,
         },
     )

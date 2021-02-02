@@ -24,10 +24,3 @@ repos:
         types: [python]
         exclude: setup.py
 
-      - id: mypy
-        name: mypy
-        stages: [commit]
-        language: system
-        entry: pipenv run mypy
-        types: [python]
-        pass_filenames: false

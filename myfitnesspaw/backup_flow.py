@@ -27,7 +27,7 @@ def make_mfp_db_dropbox_backup() -> dropbox.files.FileMetadata:
     """Upload a copy of the database file to the Dropbox backup location."""
     dbx_token = PrefectSecret("MYFITNESSPAW_DROPBOX_ACCESS_TOKEN")
     timestamp = datetime.now().strftime("%Y-%m-%d")
-    source_path = prefect.config.myfitnesspaw.mfp_db_path
+    source_path = mfp.DB_PATH
     dest_path = f"/myfitnesspaw/mfp_db_backups/mfp_db_backup_{timestamp}"
     dbx = dropbox.Dropbox(dbx_token.run())
     with open(source_path, "rb") as f:

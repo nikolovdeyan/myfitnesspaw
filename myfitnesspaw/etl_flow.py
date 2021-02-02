@@ -58,7 +58,7 @@ def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> S
     return new_state
 
 
-def try_parse_date_str(date_str: str) -> datetime.datetime:
+def try_parse_date_str(date_str: Parameter) -> datetime.datetime:
     """Try to parse a date string using a set of provided formats."""
     available_formats = ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%Y")
     for format in available_formats:
@@ -80,11 +80,11 @@ def parse_date_parameters(
     if from_date_str is None:
         from_date = default_from_date
     else:
-        from_date = try_parse_date_str(from_date_str.run()).date()
+        from_date = try_parse_date_str(from_date_str).date()
     if to_date_str is None:
         to_date = default_to_date
     else:
-        to_date = try_parse_date_str(to_date_str.run()).date()
+        to_date = try_parse_date_str(to_date_str).date()
 
     return (from_date, to_date)
 
