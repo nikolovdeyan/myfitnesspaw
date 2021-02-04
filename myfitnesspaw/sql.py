@@ -182,3 +182,28 @@ insert_measurements_command = """
 INSERT OR REPLACE INTO Measurements(userid, date, measure_name, value)
 VALUES (?, ?, ?, ?)
 """
+
+select_alpha_report_data = """
+WITH params(username) AS  (SELECT ?)
+  SELECT 'days_total', COUNT(*) FROM params, RAWDAYDATA RDD WHERE RDD.USERID = params.username
+  UNION ALL
+  SELECT 'days_with_meals' , COUNT(*) FROM params, MEALS M   WHERE M.USERID  = params.username
+  UNION ALL
+  SELECT 'days_with_cardio', COUNT(*) FROM params, CARDIOEXERCISES CE WHERE CE.USERID  = params.username
+  UNION ALL
+  SELECT 'days_with_strength', COUNT(*) FROM params, STRENGTHEXERCISES SE WHERE SE.USERID  = params.username
+  UNION ALL
+  SELECT 'days_with_measures', COUNT(*) FROM params, MEASUREMENTS M2 WHERE M2.USERID  = params.username
+  UNION ALL
+  SELECT 'num_entries_meals', COUNT(*) FROM params, MEALS M3  WHERE M3.USERID  = params.username
+  UNION ALL
+  SELECT 'num_entries_cardio', COUNT(*) FROM params, CARDIOEXERCISES CE2 WHERE CE2.USERID  = params.username
+  UNION ALL
+  SELECT 'num_entries_strength', COUNT(*) FROM params, STRENGTHEXERCISES SE WHERE SE.USERID  = params.username
+  UNION ALL
+  SELECT 'num_entries_measures', COUNT(*) FROM params, MEASUREMENTS M4  WHERE M4.USERID = params.username
+  UNION ALL
+  SELECT 'total_calories_consumed',COALESCE (SUM(m.CALORIES), 0) FROM params, MEALS M  WHERE M.USERID  = params.username
+  UNION ALL
+  SELECT 'total_calories_exercised', COALESCE (SUM(CE.CALORIES_BURNED), 0) FROM params, CARDIOEXERCISES CE WHERE CE.USERID  = params.username
+"""

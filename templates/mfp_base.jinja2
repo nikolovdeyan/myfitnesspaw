@@ -1,0 +1,72 @@
+{% extends "lisko_report_base.jinja2" %}
+
+    {% block head %}
+	  <title>{{ data.title }}</title>
+        {{ super() }}
+    {% endblock head %}
+
+            <!-- Title Row -->
+            {% block title %}
+	          <tr class="title-row">
+		          <td bgcolor="#6bc8cc" padding="0", margin="0">
+			          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+				          <tr>
+					          <td style="text-align: left; font-weight: bold; color: #3c3a41; font-family: Roboto Slab, serif; font-size: 22px; line-height: 24px; padding: 15px 20px 0 20px;">
+                      <p style="margin: 0;"> MyFitnessPaw Report </p>
+					          </td>
+				          </tr>
+				          <tr>
+					          <td style="text-align: left; color: #57555c; font-family: Roboto Slab, serif; font-size: 18px; line-height: 20px; padding: 10px 20px 20px 20px;">
+                      <p style="margin: 0;"> (experimental) </p>
+					          </td>
+				          </tr>
+			          </table>
+		          </td>
+	          </tr>
+            {% endblock title %}
+
+            <!-- Article Row -->
+             {% block article %}
+
+	          <tr class="article-row">
+		          <td style="background-color: {{ style.article_bg_color }}; padding: 20px;">
+			          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+				          <tr>
+					          <td style="vertical-align: top;">
+                      <p style="margin: 0; display: block;"> Hello, {{ data.user }}!</p>
+                      <p style="margin: 0; display: block;"> This is your scheduled MyFitnessPaw report. </p>
+                      <p style="margin: 0; display: block;"> As of today, {{ data.today }}, the following statistics are available for your username in the MyFitnessPaw database:
+                      </p>
+                      <ul>
+                        <li>Username registered for {{ data.days_total }} days:
+                          <ul>
+                            <li>Days with meals entered: {{ data.days_with_meals }}</li>
+                            <li>Days with cardio exercises: {{ data.days_with_cardio }}</li>
+                            <li>Days with strength exercises: {{ data.days_with_strength }}</li>
+                            <li>Days with measures taken: {{ data.days_with_measures }}</li>
+                            <li>Total meal entries available: {{ data.num_entries_meals }}</li>
+                            <li>Total cardio exercise entries available: {{ data.num_entries_cardio }}</li>
+                            <li>Total measurements taken: {{ data.num_entries_measures }}</li>
+                            <li>Total calories consumed: {{ data.total_calories_consumed }}</li>
+                            <li>Total calories burned in exercise: {{ data.total_calories_exercised }}</li>
+                          </ul>
+                      </ul>
+
+
+					          </td>
+				          </tr>
+			          </table>
+		          </td>
+	          </tr>
+             {% endblock article %}
+
+          <!-- Container Table END -->
+          </table>
+
+			  </td>
+		  </tr>
+	  </table>
+
+  </body>
+
+</html>
