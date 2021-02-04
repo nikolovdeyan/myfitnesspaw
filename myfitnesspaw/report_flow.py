@@ -60,7 +60,7 @@ def render_html_mail_report(
     template_loader = jinja2.FileSystemLoader(searchpath=mfp.TEMPLATES_DIR)
     template_env = jinja2.Environment(loader=template_loader)
     report_template = template_env.get_template(template_name)
-    return report_template.render(data=report_data, sytle=report_style)
+    return report_template.render(data=report_data, style=report_style)
 
 
 @task
