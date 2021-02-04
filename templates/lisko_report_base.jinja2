@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+
+    {% block head %}
+
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	  <title>Lisko Report Base Template</title>
+	  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	  <style type="text/css">
+		 a[x-apple-data-detectors] {color: inherit !important;}
+	  </style>
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:ital,wght@0,400;0,700;1,400;1,700&family=Roboto+Mono&family=Roboto+Slab:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet"> 
+
+    {% endblock %}
+
+  </head>
+
+  <body style="margin: 0; padding: 0;">
+
+    <!-- Outside Container -->
+	  <table class="outer-container" role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+		  <tr>
+			  <td style="padding: 0;">
+
+          <!-- Container Table -->
+          <table class="main-container" border="0" cellpadding="0" cellspacing="0" style="width: 840px; border-collapse: collapse; border: none;">
+
+            <!-- Header Row -->
+            {% block header %}
+
+	          <tr class="header-row" style="padding: 30px 0 0 0;">
+		          <td>
+                <table class="header-table" width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border: none;">
+                  <tr>
+                    <td class="header-logo" padding="0" margin="0" width="100%">
+			                <img src="templates/lisko-logo-header.png" height="90" alt="Lisko Report Header" style="position: relative; top: 10px; left: 30px;" />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="header-line" height="30" width="100%" padding="0" margin="0" style="background-color: #3c3a41" >
+                    </td>
+                  </tr>
+
+                </table>
+		          </td>
+	          </tr>
+
+            {% endblock header %}
+            <!-- END Header Row -->
+
+            <!-- Title Row -->
+             {% block title %}
+	          <tr class="title-row">
+		          <td bgcolor="#fec478" padding="0", margin="0">
+			          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+				          <tr>
+					          <td style="text-align: center; font-weight: bold; color: #3c3a41; font-family: Roboto Slab, serif; font-size: 22px; line-height: 24px; padding: 15px 0 0 0;">
+                      <p style="margin: 0;"> Report Title </p>
+					          </td>
+				          </tr>
+				          <tr>
+					          <td style="text-align: center; color: #57555c; font-family: Roboto Slab, serif; font-size: 18px; line-height: 20px; padding: 10px 0 10px 0;">
+                      <p style="margin: 0;"> Subtitle, if needed. </p>
+                      <p style="margin: 0;"> (Image can be used in place of text)</p>
+					          </td>
+				          </tr>
+			          </table>
+		          </td>
+	          </tr>
+              {% endblock title %}
+
+
+            <!-- Article Row -->
+              {% block article %}
+
+	          <tr class="article-row">
+		          <td style="background-color: #ffffff; padding: 20px;">
+			          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+				          <tr>
+					          <td style="height: 400px; vertical-align: top;">
+                      <p style="margin: 0; display: block;"> Space for article content. </p>
+					          </td>
+				          </tr>
+			          </table>
+		          </td>
+	          </tr>
+              {% endblock article %}
+
+            <!-- Footer Row -->
+              {% block footer %}
+	          <tr class="footer-row">
+		          <td bgcolor="#3c3a41" style="max-height: 80px;">
+                <div style="padding: 10px;">
+                  <p>Footer</p>
+                </div>
+		          </td>
+	          </tr>
+              {% endblock footer %}
+
+          <!-- Container Table END -->
+          </table>
+
+			  </td>
+		  </tr>
+	  </table>
+
+  </body>
+
+</html>
