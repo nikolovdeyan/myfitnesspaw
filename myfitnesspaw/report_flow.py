@@ -14,40 +14,117 @@ import myfitnesspaw as mfp
 def prepare_report_data_for_user(user, usermail: str) -> dict:
     with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.execute(mfp.sql.select_alpha_report_data, (usermail,))
-        report_data = dict(c.fetchall())
+        c.execute(mfp.sql.select_alpha_report_totals, (usermail,))
+        report_totals = dict(c.fetchall())
 
-    mfp_report_data = {
-        "title": "MyFitnessPaw Scheduled Report for ",
-        "user": user,
-        "today": datetime.datetime.now().strftime("%d %b %Y"),
-        # ----
-        "scope_period": "N/A",
-        "period_days_logged": "N/A",
-        "period_meals": "N/A",
-        "period_exercises": "N/A",
-        "period_calories": "N/A",
-        # ----
-        "days_total": report_data.get("days_total"),
-        "days_with_meals": report_data.get("days_with_meals"),
-        "days_with_cardio": report_data.get("days_with_cardio"),
-        "days_with_strength": report_data.get("days_with_strength"),
-        "days_with_measures": report_data.get("days_with_measures"),
-        # ---
-        "num_entries_meals": report_data.get("num_entries_meals"),
-        "num_entries_cardio": report_data.get("num_entries_cardio"),
-        "num_entries_measures": report_data.get("num_entries_measures"),
-        "total_calories_consumed": report_data.get("total_calories_consumed"),
-        "total_calories_exercised": report_data.get("total_calories_exercised"),
-    }
-    return mfp_report_data
+        yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+        lastweek = yesterday - datetime.timedelta(days=6)
+        c.execute(
+            mfp.sql.select_alpha_report_range,
+            (usermail, lastweek.strftime("%Y-%m-%d"), yesterday.strftime("%Y-%m-%d")),
+        )
+        report_week = dict(c.fetchall())
+
+        mfp_report_data = {
+            "title": f"MyFitnessPaw Scheduled Report for {user}",
+            "user": f"{user}",
+            "today": datetime.datetime.now().strftime("%d %b %Y"),
+            "weekly": {
+                "days_total": (
+                    "Number of days scraped by MyFitnessPaw",
+                    report_week.get("days_total"),
+                ),
+                "meals_consumed": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("meals_consumed"),
+                ),
+                "meals_breakfast": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("meals_breakfast"),
+                ),
+                "meals_lunch": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("meals_lunch"),
+                ),
+                "meals_dinner": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("meals_dinner"),
+                ),
+                "meals_snacks": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("meals_snacks"),
+                ),
+                "calories_consumed": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("calories_consumed"),
+                ),
+                "calories_breakfast": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("calories_breakfast"),
+                ),
+                "calories_lunch": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("calories_lunch"),
+                ),
+                "calories_dinner": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("calories_dinner"),
+                ),
+                "calories_snacks": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("calories_snacks"),
+                ),
+            },
+            "user_totals": {
+                "days_with_meals": (
+                    "Days with at least one meal tracked",
+                    report_totals.get("days_with_meals"),
+                ),
+                "days_with_cardio": (
+                    "Days with any cardio exercises tracked",
+                    report_totals.get("days_with_cardio"),
+                ),
+                "days_with_strength": (
+                    "Days with any strength exercises tracked",
+                    report_totals.get("days_with_strength"),
+                ),
+                "days_with_measures": (
+                    "Days with any measure tracked",
+                    report_totals.get("days_with_measures"),
+                ),
+                "num_meals": (
+                    "Total number of tracked meals",
+                    report_totals.get("num_entries_meals"),
+                ),
+                "num_cardio": (
+                    "Total number of cardio exercises",
+                    report_totals.get("num_entries_meals"),
+                ),
+                "num_measures": (
+                    "Total number of measures taken",
+                    report_totals.get("num_entries_meals"),
+                ),
+                "calories_consumed": (
+                    "Total number of calories consumed",
+                    report_totals.get("total_calories_consumed"),
+                ),
+                "calories_exercised": (
+                    "Total number of calories burned with exercise",
+                    report_totals.get("total_calories_exercised"),
+                ),
+            },
+            "footer": {
+                "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            },
+        }
+        return mfp_report_data
 
 
 @task
 def prepare_report_style_for_user(user: str) -> dict:
     mfp_report_style = {
         "title_bg_color": "#fec478",
-        "article_bg_color": "#ffffff",
+        "article_bg_color": "#EDF2FF",
     }
     return mfp_report_style
 
@@ -74,6 +151,13 @@ def send_mail_report(email_addr: str, message: str) -> None:
     e.run(email_to=email_addr)
 
 
+@task
+def save_mail_report_locally(message: str) -> None:
+    """Send a prepared report to the provided address."""
+    with open("temp_report.html", "w") as f:
+        f.write(message)
+
+
 def get_report_flow_for_user(user: str) -> Flow:
     """Return a flow configured to send reports to user."""
     with Flow(f"MyFitnessPaw Email Report <{user.upper()}>") as flow:
@@ -86,5 +170,6 @@ def get_report_flow_for_user(user: str) -> Flow:
             report_data=report_data,
             report_style=report_style,
         )
+        t = save_mail_report_locally(report_message)  # noqa
         r = send_mail_report(usermail, report_message)  # noqa
     return flow

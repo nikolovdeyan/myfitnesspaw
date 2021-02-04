@@ -183,7 +183,7 @@ INSERT OR REPLACE INTO Measurements(userid, date, measure_name, value)
 VALUES (?, ?, ?, ?)
 """
 
-select_alpha_report_data = """
+select_alpha_report_totals = """
 WITH params(username) AS  (SELECT ?)
   SELECT 'days_total', COUNT(*) FROM params, RAWDAYDATA RDD WHERE RDD.USERID = params.username
   UNION ALL
@@ -206,4 +206,29 @@ WITH params(username) AS  (SELECT ?)
   SELECT 'total_calories_consumed',COALESCE (SUM(m.CALORIES), 0) FROM params, MEALS M  WHERE M.USERID  = params.username
   UNION ALL
   SELECT 'total_calories_exercised', COALESCE (SUM(CE.CALORIES_BURNED), 0) FROM params, CARDIOEXERCISES CE WHERE CE.USERID  = params.username
+"""
+
+select_alpha_report_range = """
+WITH params(username, date_from, date_to) AS  (SELECT ?, ?, ?)
+  SELECT 'days_total',COUNT(*) FROM params, RAWDAYDATA RDD WHERE RDD.USERID = params.username AND RDD.DATE  BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'meals_consumed', COUNT(*) from params, MEALS M WHERE M.USERID  = params.username AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'meals_breakfast', COUNT(*) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'breakfast' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'meals_lunch', COUNT(*) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'lunch' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'meals_dinner', COUNT(*) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'dinner' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'meals_snacks', COUNT(*) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'snacks' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'calories_consumed', SUM(M.CALORIES) from params, MEALS M WHERE M.USERID  = params.username AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'calories_breakfast',  SUM(M.CALORIES) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'breakfast' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'calories_lunch', SUM(M.CALORIES) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'lunch' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'calories_dinner',  SUM(M.CALORIES) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'dinner' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+  UNION ALL
+  SELECT 'calories_snacks',  SUM(M.CALORIES) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'snacks' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
 """
