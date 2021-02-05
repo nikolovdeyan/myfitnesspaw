@@ -1,3 +1,8 @@
+"""MyFitnessPaw's Reporting Flow.
+This module currently hosts the composition of a single Prefect flow used to
+prepare an email report with a set of statistics extracted from the MFP database,
+and to send the email to the user registered with the flow.
+"""
 import datetime
 import sqlite3
 from contextlib import closing
@@ -12,6 +17,7 @@ import myfitnesspaw as mfp
 
 @task
 def prepare_report_data_for_user(user, usermail: str) -> dict:
+    """Return a dictionary containing the data to populate the experimental report."""
     with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
         c.execute(mfp.sql.select_alpha_report_totals, (usermail,))
@@ -39,39 +45,39 @@ def prepare_report_data_for_user(user, usermail: str) -> dict:
                     report_week.get("meals_consumed"),
                 ),
                 "meals_breakfast": (
-                    "Days where at least one daily meal was tracked",
+                    "Days with breakfast",
                     report_week.get("meals_breakfast"),
                 ),
                 "meals_lunch": (
-                    "Days where at least one daily meal was tracked",
+                    "Days with lunch",
                     report_week.get("meals_lunch"),
                 ),
                 "meals_dinner": (
-                    "Days where at least one daily meal was tracked",
+                    "Days with dinner",
                     report_week.get("meals_dinner"),
                 ),
                 "meals_snacks": (
-                    "Days where at least one daily meal was tracked",
+                    "Days with snacks",
                     report_week.get("meals_snacks"),
                 ),
                 "calories_consumed": (
-                    "Days where at least one daily meal was tracked",
+                    "Total calories consumed (all time)",
                     report_week.get("calories_consumed"),
                 ),
                 "calories_breakfast": (
-                    "Days where at least one daily meal was tracked",
+                    "Total calories consumed for breakfast (all time)",
                     report_week.get("calories_breakfast"),
                 ),
                 "calories_lunch": (
-                    "Days where at least one daily meal was tracked",
+                    "Total calories consumed for lunch (all time)",
                     report_week.get("calories_lunch"),
                 ),
                 "calories_dinner": (
-                    "Days where at least one daily meal was tracked",
+                    "Total calories consumed for dinner (all time)",
                     report_week.get("calories_dinner"),
                 ),
                 "calories_snacks": (
-                    "Days where at least one daily meal was tracked",
+                    "Total calories consumed for snacks (all time)",
                     report_week.get("calories_snacks"),
                 ),
             },
@@ -122,6 +128,7 @@ def prepare_report_data_for_user(user, usermail: str) -> dict:
 
 @task
 def prepare_report_style_for_user(user: str) -> dict:
+    """Return a dictionary containing the values to style the experimental report."""
     mfp_report_style = {
         "title_bg_color": "#fec478",
         "article_bg_color": "#EDF2FF",
@@ -130,7 +137,7 @@ def prepare_report_style_for_user(user: str) -> dict:
 
 
 @task
-def render_html_mail_report(
+def render_html_email_report(
     template_name: str, report_data: dict, report_style: dict
 ) -> str:
     """Render a Jinja2 HTML template containing the report to send."""
@@ -141,7 +148,7 @@ def render_html_mail_report(
 
 
 @task
-def send_mail_report(email_addr: str, message: str) -> None:
+def send_email_report(email_addr: str, message: str) -> None:
     """Send a prepared report to the provided address."""
     e = EmailTask(
         subject="MyFitnessPaw Report",
@@ -152,8 +159,8 @@ def send_mail_report(email_addr: str, message: str) -> None:
 
 
 @task
-def save_mail_report_locally(message: str) -> None:
-    """Send a prepared report to the provided address."""
+def save_email_report_locally(message: str) -> None:
+    "Temporary function to see the result of the render locally."
     with open("temp_report.html", "w") as f:
         f.write(message)
 
@@ -165,11 +172,11 @@ def get_report_flow_for_user(user: str) -> Flow:
         usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
         report_data = prepare_report_data_for_user(user, usermail)
         report_style = prepare_report_style_for_user(user)
-        report_message = render_html_mail_report(
+        report_message = render_html_email_report(
             template_name="mfp_base.jinja2",
             report_data=report_data,
             report_style=report_style,
         )
-        t = save_mail_report_locally(report_message)  # noqa
-        r = send_mail_report(usermail, report_message)  # noqa
+        t = save_email_report_locally(report_message)  # noqa
+        r = send_email_report(usermail, report_message)  # noqa
     return flow

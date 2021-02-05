@@ -21,5 +21,9 @@ MYFITNESSPAL_PASSWORD_USER = ""
 MYFITNESSPAW_SLACK_WEBHOOK_URL = ""
 MYFITNESSPAW_DROPBOX_ACCESS_TOKEN = ""
 
+# MyFitnessPaw Configuration
 [myfitnesspaw]
 mfp_db_file = "mfp_db.sqlite"
+
+[myfitnesspaw.backup]
+dbx_backup_dir = "/mfp_db_backups"

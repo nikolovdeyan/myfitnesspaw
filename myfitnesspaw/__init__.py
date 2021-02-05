@@ -20,6 +20,17 @@ def setup_database(root_dir):
     return database_path
 
 
+def get_local_run_config() -> LocalRun:
+    """Return a LocalRun configuration to attach to a flow."""
+    return LocalRun(
+        working_dir=myfitnesspaw.ROOT_DIR,
+        env={
+            "PREFECT__USER_CONFIG_PATH": myfitnesspaw.MFP_CONFIG_PATH,
+            "PYTHONPATH": myfitnesspaw.PYTHONPATH,
+        },
+    )
+
+
 root_dir = Path().absolute()
 python_ver = f"{sys.version_info.major}.{sys.version_info.minor}"
 
@@ -34,14 +45,3 @@ myfitnesspaw.DB_PATH = str(db_path)
 myfitnesspaw.PYTHONPATH = str(sitepackages_dir)
 myfitnesspaw.MFP_CONFIG_PATH = str(root_dir.joinpath("mfp_config.toml"))
 myfitnesspaw.TEMPLATES_DIR = str(root_dir.joinpath("templates"))
-
-
-def get_local_run_config() -> LocalRun:
-    """Return a LocalRun configuration to attach to a flow."""
-    return LocalRun(
-        working_dir=myfitnesspaw.ROOT_DIR,
-        env={
-            "PREFECT__USER_CONFIG_PATH": myfitnesspaw.MFP_CONFIG_PATH,
-            "PYTHONPATH": myfitnesspaw.PYTHONPATH,
-        },
-    )
