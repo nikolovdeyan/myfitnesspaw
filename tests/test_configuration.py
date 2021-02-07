@@ -31,24 +31,6 @@ mfp_db_file = "mfp_db.sqlite"
 dbx_backup_dir = "/mfp_db_backups"
 """
 
-#@pytest.fixture
-#def session(): # 1
-#    connection = sqlite3.connect(':memory:')
-#    db_session = connection.cursor()
-#    yield db_session
-#    connection.close()
-
-
-#@pytest.fixture
-#def setup_db(session): # 2
-#    session.execute('''CREATE TABLE numbers
-#                          (number text, existing boolean)''')
-#    session.execute('INSERT INTO numbers VALUES ("+3155512345", 1)')
-#    session.connection.commit()
-#@pytest.fixture
-#def 
-#        testpath = Path(__file__).absolute().parent
-
 
 class TestMFPRepo:
 
@@ -74,15 +56,3 @@ class TestMFPRepo:
     def test_configuration_file_has_default_database_file_name(self):
         mfp_config = toml.load(ROOT_DIR.joinpath(MFP_CONFIG_FILE))
         assert mfp_config["myfitnesspaw"]["mfp_db_file"] == "mfp_db.sqlite"
-
-
-class TestETLFlow:
-    def test_create_mfp_database(self):
-        testdir = Path(__file__).absolute().parent
-        fake_db_path = testdir.joinpath("mfp_db_fake.sqlite")
-        mfp.DB_PATH = fake_db_path
-        with Flow("someuser") as testflow:
-            res = mfp.etl.create_mfp_database()
-        testflow.run()
-
-        assert False()

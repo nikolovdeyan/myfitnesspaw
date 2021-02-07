@@ -45,3 +45,11 @@ myfitnesspaw.DB_PATH = str(db_path)
 myfitnesspaw.PYTHONPATH = str(sitepackages_dir)
 myfitnesspaw.MFP_CONFIG_PATH = str(root_dir.joinpath("mfp_config.toml"))
 myfitnesspaw.TEMPLATES_DIR = str(root_dir.joinpath("templates"))
+
+
+def print_paths():
+    print(f"myfitnesspaw.ROOT_DIR:        {myfitnesspaw.ROOT_DIR}")
+    print(f"myfitnesspaw.DB_PATH:         {myfitnesspaw.DB_PATH}")
+    print(f"myfitnesspaw.PYTHONPATH:      {myfitnesspaw.PYTHONPATH}")
+    print(f"myfitnesspaw.MFP_CONFIG_PATH: {myfitnesspaw.MFP_CONFIG_PATH}")
+    print(f"myfitnesspaw.TEMPLATES_DIR:   {myfitnesspaw.TEMPLATES_DIR}")
