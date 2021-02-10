@@ -1,4 +1,6 @@
-"""MyFitnessPaw's Reporting Flow.
+"""
+MyFitnessPaw's Reporting Flow.
+
 This module currently hosts the composition of a single Prefect flow used to
 prepare an email report with a set of statistics extracted from the MFP database,
 and to send the email to the user registered with the flow.

@@ -4,12 +4,7 @@ from pathlib import Path
 import prefect
 from prefect.run_configs import LocalRun
 
-import myfitnesspaw
-from myfitnesspaw import backup_flow as backup  # noqa
-from myfitnesspaw import etl_flow as etl  # noqa
-from myfitnesspaw import report_flow as report  # noqa
-from myfitnesspaw import schedules  # noqa
-from myfitnesspaw import sql  # noqa
+from . import backup_flow, etl_flow, report_flow, schedules, sql  # noqa
 
 
 def setup_database(root_dir):
@@ -23,10 +18,10 @@ def setup_database(root_dir):
 def get_local_run_config() -> LocalRun:
     """Return a LocalRun configuration to attach to a flow."""
     return LocalRun(
-        working_dir=myfitnesspaw.ROOT_DIR,
+        working_dir=ROOT_DIR,
         env={
-            "PREFECT__USER_CONFIG_PATH": myfitnesspaw.MFP_CONFIG_PATH,
-            "PYTHONPATH": myfitnesspaw.PYTHONPATH,
+            "PREFECT__USER_CONFIG_PATH": MFP_CONFIG_PATH,
+            "PYTHONPATH": PYTHONPATH,
         },
     )
 
@@ -40,16 +35,17 @@ sitepackages_dir = root_dir.joinpath(
 
 db_path = setup_database(root_dir)
 
-myfitnesspaw.ROOT_DIR = str(root_dir)
-myfitnesspaw.DB_PATH = str(db_path)
-myfitnesspaw.PYTHONPATH = str(sitepackages_dir)
-myfitnesspaw.MFP_CONFIG_PATH = str(root_dir.joinpath("mfp_config.toml"))
-myfitnesspaw.TEMPLATES_DIR = str(root_dir.joinpath("templates"))
-
 
 def print_paths():
-    print(f"myfitnesspaw.ROOT_DIR:        {myfitnesspaw.ROOT_DIR}")
-    print(f"myfitnesspaw.DB_PATH:         {myfitnesspaw.DB_PATH}")
-    print(f"myfitnesspaw.PYTHONPATH:      {myfitnesspaw.PYTHONPATH}")
-    print(f"myfitnesspaw.MFP_CONFIG_PATH: {myfitnesspaw.MFP_CONFIG_PATH}")
-    print(f"myfitnesspaw.TEMPLATES_DIR:   {myfitnesspaw.TEMPLATES_DIR}")
+    print(f"myfitnesspaw.ROOT_DIR:        {ROOT_DIR}")
+    print(f"myfitnesspaw.DB_PATH:         {DB_PATH}")
+    print(f"myfitnesspaw.PYTHONPATH:      {PYTHONPATH}")
+    print(f"myfitnesspaw.MFP_CONFIG_PATH: {MFP_CONFIG_PATH}")
+    print(f"myfitnesspaw.TEMPLATES_DIR:   {TEMPLATES_DIR}")
+
+
+ROOT_DIR = str(root_dir)
+DB_PATH = str(db_path)
+PYTHONPATH = str(sitepackages_dir)
+MFP_CONFIG_PATH = str(root_dir.joinpath("mfp_config.toml"))
+TEMPLATES_DIR = str(root_dir.joinpath("templates"))
