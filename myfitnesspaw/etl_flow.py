@@ -1,4 +1,5 @@
-"""MyFitnessPaw's Extract-Transform-Load Prefect Flow.
+"""
+MyFitnessPaw's Extract-Transform-Load Prefect Flow.
 
 This Prefect flow contains the steps to extract information from www.myfitnesspal.com,
 transform and store it locally in an SQLite database. The raw objects' data is stored in
@@ -58,12 +59,12 @@ def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> S
     return new_state
 
 
-def try_parse_date_str(date_str: Parameter) -> datetime.datetime:
+def try_parse_date_str(date_str: str) -> datetime.datetime:
     """Try to parse a date string using a set of provided formats."""
     available_formats = ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%Y")
-    for format in available_formats:
+    for fmt in available_formats:
         try:
-            return datetime.datetime.strptime(date_str, format)
+            return datetime.datetime.strptime(date_str, fmt)
         except ValueError:
             pass
     raise ValueError(f"No available format found to parse <{date_str}>.")
@@ -71,8 +72,9 @@ def try_parse_date_str(date_str: Parameter) -> datetime.datetime:
 
 @task(name="Parse From and To Dates Parameters")
 def parse_date_parameters(
-    from_date_str: Union[Parameter, None], to_date_str: Union[Parameter, None]
+    from_date_str: Union[str, None], to_date_str: Union[str, None]
 ) -> Tuple[datetime.date, datetime.date]:
+    """Returns parsed datetime.date objects from the parameters passed."""
     today = datetime.date.today()
     default_from_date = today - timedelta(days=6)
     default_to_date = today - timedelta(days=1)
@@ -251,9 +253,8 @@ def extract_meals_from_days(days: Sequence[MaterializedDay]) -> List[Meal]:
         for meal in day.meals:
             if not meal:  # TODO: ?
                 continue
-            else:
-                meal.username = day.username
-                meal.date = day.date
+            meal.username = day.username
+            meal.date = day.date
     return [meal for day in days for meal in day.meals if meal]
 
 

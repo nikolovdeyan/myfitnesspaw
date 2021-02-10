@@ -1,4 +1,5 @@
-"""MyFitnessPaw's Backup Processing Flow.
+"""
+MyFitnessPaw's Backup Processing Flow.
 
 This module hosts the functions to create database backups for the MyFitnessPaw
 database file. Currently the backups are stored on a Dropbox drive and the files
@@ -38,8 +39,8 @@ def make_dropbox_backup(
     source_path = mfp.DB_PATH
     dest_path = f"{dbx_mfp_dir}/mfp_db_backup_{timestamp}"
     dbx = dropbox.Dropbox(dbx_token)
-    with open(source_path, "rb") as f:
-        res = dbx.files_upload(f.read(), dest_path, mode=WriteMode.overwrite)
+    with open(source_path, "rb") as file:
+        res = dbx.files_upload(file.read(), dest_path, mode=WriteMode.overwrite)
     return res
 
 
@@ -64,11 +65,11 @@ def apply_backup_rotation_scheme(
     #  hardcoding it to keep only the most recent 5 for now in order to see how it works.
     files_to_delete = select_fifo_backups_to_delete(5, files_list)
     dbx = dropbox.Dropbox(dbx_token)
-    deleted = []
     if not files_to_delete:
-        return deleted
-    for f in files_to_delete:
-        res = dbx.files_delete(f"{dbx_mfp_dir}/{f}")
+        return []
+    deleted = []
+    for filename in files_to_delete:
+        res = dbx.files_delete(f"{dbx_mfp_dir}/{filename}")
         deleted.append((res.name, res.content_hash))
     return deleted
 

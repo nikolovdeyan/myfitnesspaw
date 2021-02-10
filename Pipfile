@@ -18,6 +18,11 @@ pre-commit = "*"
 mypy = "*"
 prefect = {extras = ["viz"], version = "*"}
 pytest = "*"
+python-language-server = {extras = ["all"], version = "*"}
+pyls-isort = "*"
+pyls-mypy = "*"
+pyls-black = "*"
+autoflake = "*"
 
 [requires]
 python_version = "3.9"
