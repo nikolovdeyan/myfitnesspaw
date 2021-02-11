@@ -25,5 +25,5 @@ MYFITNESSPAW_DROPBOX_ACCESS_TOKEN = ""
 [myfitnesspaw]
 mfp_db_file = "mfp_db.sqlite"
 
-  [myfitnesspaw.backup]
-  dbx_backup_dir = "/mfp_db_backups"
+[myfitnesspaw.backup]
+dbx_backup_dir = "/mfp_db_backups"

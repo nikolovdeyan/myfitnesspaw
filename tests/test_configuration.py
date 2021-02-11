@@ -1,13 +1,7 @@
 import os
-import sqlite3
-import tempfile
 from pathlib import Path
 
-import prefect
 import toml
-from prefect import Flow
-
-import myfitnesspaw as mfp
 
 ROOT_DIR = Path().absolute()
 MFP_CONFIG_FILE = "mfp_config.toml"
@@ -33,7 +27,6 @@ dbx_backup_dir = "/mfp_db_backups"
 
 
 class TestMFPRepo:
-
     def test_configuration_file_is_available(self):
         assert os.path.exists(ROOT_DIR.joinpath(MFP_CONFIG_FILE)) == 1
 

@@ -1,73 +1,21 @@
-"""
-MyFitnessPaw's Extract-Transform-Load Prefect Flow.
-
-This Prefect flow contains the steps to extract information from www.myfitnesspal.com,
-transform and store it locally in an SQLite database. The raw objects' data is stored in
-a serialized JSON form which is then used to prepare several report-friendly tables.
-"""
 import datetime
 import sqlite3
 from contextlib import closing
 from datetime import timedelta
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, List, Optional, Sequence, Tuple, Union
 
+import dropbox
+import jinja2
 import jsonpickle
 import myfitnesspal
 import prefect
-import requests
-from myfitnesspal.exercise import Exercise
+from dropbox.files import WriteMode
 from myfitnesspal.meal import Meal
-from prefect import Flow, Parameter, flatten, mapped, task, unmapped
-from prefect.engine.state import State
-from prefect.tasks.secrets import PrefectSecret
+from prefect import task
+from prefect.tasks.notifications.email_task import EmailTask
 
-import myfitnesspaw as mfp
-
-
-class MaterializedDay:
-    """A class to hold the properties from myfitnesspal that we are working with."""
-
-    def __init__(
-        self,
-        username: str,
-        date: datetime.date,
-        meals: List[Meal],
-        exercises: List[Exercise],
-        goals: Dict[str, float],
-        notes: Dict,  # currently python-myfitnesspal only scrapes food notes
-        water: float,
-    ):
-        self.username = username
-        self.date = date
-        self.meals = meals
-        self.exercises = exercises
-        self.goals = goals
-        self.notes = notes
-        self.water = water
-
-
-def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> State:
-    """State handler for Slack notifications in case of flow failure."""
-    logger = prefect.context.get("logger")
-    slack_hook_url = PrefectSecret("MYFITNESSPAW_SLACK_WEBHOOK_URL")
-    if new_state.is_failed():
-        if not slack_hook_url.run():
-            logger.info("No Slack hook url provided, skipping notification...")
-            return new_state
-        msg = f"MyFitnessPaw ETL flow has failed: {new_state}!"
-        requests.post(slack_hook_url.run(), json={"text": msg})
-    return new_state
-
-
-def try_parse_date_str(date_str: str) -> datetime.datetime:
-    """Try to parse a date string using a set of provided formats."""
-    available_formats = ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%Y")
-    for fmt in available_formats:
-        try:
-            return datetime.datetime.strptime(date_str, fmt)
-        except ValueError:
-            pass
-    raise ValueError(f"No available format found to parse <{date_str}>.")
+from . import DB_PATH, TEMPLATES_DIR, sql
+from ._utils import MaterializedDay, select_fifo_backups_to_delete, try_parse_date_str
 
 
 @task(name="Parse From and To Dates Parameters")
@@ -78,6 +26,13 @@ def parse_date_parameters(
     today = datetime.date.today()
     default_from_date = today - timedelta(days=6)
     default_to_date = today - timedelta(days=1)
+
+    if (from_date_str is not None and to_date_str is None) or (
+        from_date_str is None and to_date_str is not None
+    ):
+        raise ValueError(
+            "Either both from_date and to_date should be provided or neither."
+        )
 
     if from_date_str is None:
         from_date = default_from_date
@@ -105,17 +60,17 @@ def generate_dates_to_extract(
 def create_mfp_database():
     """Prepare the database directory and file."""
     create_mfp_db_script = f"""
-    {mfp.sql.create_raw_day_table}
-    {mfp.sql.create_notes_table}
-    {mfp.sql.create_water_table}
-    {mfp.sql.create_goals_table}
-    {mfp.sql.create_meals_table}
-    {mfp.sql.create_mealentries_table}
-    {mfp.sql.create_cardioexercises_table}
-    {mfp.sql.create_strengthexercises_table}
-    {mfp.sql.create_measurements_table}
+    {sql.create_raw_day_table}
+    {sql.create_notes_table}
+    {sql.create_water_table}
+    {sql.create_goals_table}
+    {sql.create_meals_table}
+    {sql.create_mealentries_table}
+    {sql.create_cardioexercises_table}
+    {sql.create_strengthexercises_table}
+    {sql.create_measurements_table}
     """
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.executescript(create_mfp_db_script)
         conn.commit()
 
@@ -341,10 +296,10 @@ def mfp_select_raw_days(
 ) -> List[Tuple[str, datetime.date, str]]:
     """Select raw day entries for username and provided dates."""
     mfp_existing_days = []
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
         for date in dates:
-            c.execute(mfp.sql.select_rawdaydata_record, (username, date))
+            c.execute(sql.select_rawdaydata_record, (username, date))
             result = c.fetchone()
             day_json = result[0] if result else None
             day_record = (username, date, day_json)
@@ -355,152 +310,274 @@ def mfp_select_raw_days(
 @task(name="Load Raw Day Records -> (MyFitnessPaw)")
 def mfp_insert_raw_days(days_values: Sequence[Tuple]) -> None:
     """Insert a sequence of day values in the database."""
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(mfp.sql.insert_or_replace_rawdaydata_record, days_values)
+        c.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
         conn.commit()
 
 
 @task(name="Load Notes Records -> (MyFitnessPaw)")
 def mfp_insert_notes(notes_values: Sequence[Tuple]) -> None:
     """Insert a sequence of note values in the database."""
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(mfp.sql.insert_note_record, notes_values)
+        c.executemany(sql.insert_note_record, notes_values)
         conn.commit()
 
 
 @task(name="Load Water Records -> (MyFitnessPaw)")
 def mfp_insert_water(water_values: Sequence[Tuple]) -> None:
     """Insert a sequence of water records values in the database."""
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(mfp.sql.insert_water_record, water_values)
+        c.executemany(sql.insert_water_record, water_values)
         conn.commit()
 
 
 @task(name="Load Goals Records -> (MyFitnessPaw)")
 def mfp_insert_goals(goals_values: Sequence[Tuple]) -> None:
     """Insert a sequence of goals records in the database."""
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(mfp.sql.insert_goals_record, goals_values)
+        c.executemany(sql.insert_goals_record, goals_values)
         conn.commit()
 
 
 @task(name="Load Meal Records -> (MyFitnessPaw)")
 def mfp_insert_meals(meals_values: Sequence[Tuple]) -> None:
     """Insert a sequence of meal values in the database."""
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(mfp.sql.insert_meal_record, meals_values)
+        c.executemany(sql.insert_meal_record, meals_values)
         conn.commit()
 
 
 @task(name="Load MealEntry Records -> (MyFitnessPaw)")
 def mfp_insert_mealentries(mealentries_values: Sequence[Tuple]) -> None:
     """Insert a sequence of meal entry values in the database."""
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(mfp.sql.insert_mealentry_record, mealentries_values)
+        c.executemany(sql.insert_mealentry_record, mealentries_values)
         conn.commit()
 
 
 @task(name="Load CardioExercises Records -> (MyFitnessPaw)")
 def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple]) -> None:
     """Insert a sequence of cardio exercise entries in the database."""
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(mfp.sql.insert_cardioexercises_command, cardio_list)
+        c.executemany(sql.insert_cardioexercises_command, cardio_list)
         conn.commit()
 
 
 @task(name="Load StrengthExercises Records -> (MyFitnessPaw)")
 def mfp_insert_strength_exercises(strength_list: Sequence[Tuple]) -> None:
     """Insert a sequence of strength exercise values in the database."""
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(mfp.sql.insert_strengthexercises_command, strength_list)
+        c.executemany(sql.insert_strengthexercises_command, strength_list)
         conn.commit()
 
 
 @task(name="Load Measurement Records -> (MyFitnessPaw)")
 def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
     """Insert a sequence of measurements in the database."""
-    with closing(sqlite3.connect(mfp.DB_PATH)) as conn, closing(conn.cursor()) as c:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(mfp.sql.insert_measurements_command, measurements)
+        c.executemany(sql.insert_measurements_command, measurements)
         conn.commit()
 
 
-def get_flow_for_user(user) -> Flow:
-    """Return a flow that gets the user data from myfitnesspal into the local database."""
-    with Flow(
-        f"MyFitnessPaw ETL <{user.upper()}>", state_handlers=[slack_notify_on_failure]
-    ) as flow:
-        flow.run_config = mfp.get_local_run_config()
-        from_date, to_date = parse_date_parameters(
-            from_date_str=Parameter(name="from_date", default=None),
-            to_date_str=Parameter(name="to_date", default=None),
+@task
+def prepare_report_data_for_user(user, usermail: str) -> dict:
+    """Return a dictionary containing the data to populate the experimental report."""
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.execute(sql.select_alpha_report_totals, (usermail,))
+        report_totals = dict(c.fetchall())
+
+        yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+        lastweek = yesterday - datetime.timedelta(days=6)
+        c.execute(
+            sql.select_alpha_report_range,
+            (usermail, lastweek.strftime("%Y-%m-%d"), yesterday.strftime("%Y-%m-%d")),
         )
-        measures = Parameter(name="measures", default=["Weight"])
-        username = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
-        password = PrefectSecret(f"MYFITNESSPAL_PASSWORD_{user.upper()}")
-        db_exists = create_mfp_database()
-        dates_to_extract = generate_dates_to_extract(from_date, to_date)
-        extracted_days = get_myfitnesspal_day.map(
-            date=dates_to_extract,
-            username=unmapped(username),
-            password=unmapped(password),
-        )
-        serialized_extracted_days = serialize_myfitnesspal_days(extracted_days)
-        mfp_existing_days = mfp_select_raw_days(
-            username=username,
-            dates=dates_to_extract,
-            upstream_tasks=[db_exists],
-        )
-        serialized_days_to_process = filter_new_or_changed_records(
-            extracted_records=serialized_extracted_days,
-            local_records=mfp_existing_days,
-        )
-        raw_days_load_state = mfp_insert_raw_days(serialized_days_to_process)
-        days_to_process = deserialize_records_to_process(
-            serialized_days=serialized_days_to_process,
-            upstream_tasks=[raw_days_load_state],
-        )
-        notes_records = extract_notes_from_days(days_to_process)
-        notes_load_state = mfp_insert_notes(notes_records)  # NOQA
-        water_records = extract_water_from_days(days_to_process)
-        water_load_state = mfp_insert_water(water_records)  # NOQA
-        goals_records = extract_goals_from_days(days_to_process)
-        goals_load_state = mfp_insert_goals(goals_records)  # NOQA
-        meals_to_process = extract_meals_from_days(days_to_process)
-        meals_records = extract_meal_records_from_meals(meals_to_process)
-        mealentries_records = extract_mealentry_records_from_meals(meals_to_process)
-        meals_load_state = mfp_insert_meals(meals_records)
-        mealentries_load_state = mfp_insert_mealentries(  # NOQA
-            mealentries_records, upstream_tasks=[meals_load_state]
-        )
-        cardio_exercises_to_process = extract_cardio_exercises_from_days(
-            days_to_process
-        )
-        strength_exercises_to_process = extract_strength_exercises_from_days(
-            days_to_process
-        )
-        cardio_exercises_load_state = mfp_insert_cardio_exercises(  # NOQA
-            cardio_list=cardio_exercises_to_process,
-        )
-        strength_exercises_load_state = mfp_insert_strength_exercises(  # NOQA
-            strength_list=strength_exercises_to_process,
-        )
-        measurements_records = get_myfitnesspal_measure(
-            measure=mapped(measures),
-            username=username,
-            password=password,
-            dates_to_extract=dates_to_extract,
-        )
-        measurements_load_state = mfp_insert_measurements(  # NOQA
-            measurements=flatten(measurements_records),
-            upstream_tasks=[db_exists],
-        )
-    return flow
+        report_week = dict(c.fetchall())
+
+        mfp_report_data = {
+            "title": f"MyFitnessPaw Scheduled Report for {user}",
+            "user": f"{user}",
+            "today": datetime.datetime.now().strftime("%d %b %Y"),
+            "weekly": {
+                "days_total": (
+                    "Number of days scraped by MyFitnessPaw",
+                    report_week.get("days_total"),
+                ),
+                "meals_consumed": (
+                    "Days where at least one daily meal was tracked",
+                    report_week.get("meals_consumed"),
+                ),
+                "meals_breakfast": (
+                    "Days with breakfast",
+                    report_week.get("meals_breakfast"),
+                ),
+                "meals_lunch": (
+                    "Days with lunch",
+                    report_week.get("meals_lunch"),
+                ),
+                "meals_dinner": (
+                    "Days with dinner",
+                    report_week.get("meals_dinner"),
+                ),
+                "meals_snacks": (
+                    "Days with snacks",
+                    report_week.get("meals_snacks"),
+                ),
+                "calories_consumed": (
+                    "Total calories consumed (all time)",
+                    report_week.get("calories_consumed"),
+                ),
+                "calories_breakfast": (
+                    "Total calories consumed for breakfast (all time)",
+                    report_week.get("calories_breakfast"),
+                ),
+                "calories_lunch": (
+                    "Total calories consumed for lunch (all time)",
+                    report_week.get("calories_lunch"),
+                ),
+                "calories_dinner": (
+                    "Total calories consumed for dinner (all time)",
+                    report_week.get("calories_dinner"),
+                ),
+                "calories_snacks": (
+                    "Total calories consumed for snacks (all time)",
+                    report_week.get("calories_snacks"),
+                ),
+            },
+            "user_totals": {
+                "days_with_meals": (
+                    "Days with at least one meal tracked",
+                    report_totals.get("days_with_meals"),
+                ),
+                "days_with_cardio": (
+                    "Days with any cardio exercises tracked",
+                    report_totals.get("days_with_cardio"),
+                ),
+                "days_with_strength": (
+                    "Days with any strength exercises tracked",
+                    report_totals.get("days_with_strength"),
+                ),
+                "days_with_measures": (
+                    "Days with any measure tracked",
+                    report_totals.get("days_with_measures"),
+                ),
+                "num_meals": (
+                    "Total number of tracked meals",
+                    report_totals.get("num_entries_meals"),
+                ),
+                "num_cardio": (
+                    "Total number of cardio exercises",
+                    report_totals.get("num_entries_meals"),
+                ),
+                "num_measures": (
+                    "Total number of measures taken",
+                    report_totals.get("num_entries_meals"),
+                ),
+                "calories_consumed": (
+                    "Total number of calories consumed",
+                    report_totals.get("total_calories_consumed"),
+                ),
+                "calories_exercised": (
+                    "Total number of calories burned with exercise",
+                    report_totals.get("total_calories_exercised"),
+                ),
+            },
+            "footer": {
+                "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            },
+        }
+        return mfp_report_data
+
+
+@task
+def prepare_report_style_for_user(user: str) -> dict:
+    """Return a dictionary containing the values to style the experimental report."""
+    mfp_report_style = {
+        "title_bg_color": "#fec478",
+        "article_bg_color": "#EDF2FF",
+    }
+    return mfp_report_style
+
+
+@task
+def render_html_email_report(
+    template_name: str, report_data: dict, report_style: dict
+) -> str:
+    """Render a Jinja2 HTML template containing the report to send."""
+    template_loader = jinja2.FileSystemLoader(searchpath=TEMPLATES_DIR)
+    template_env = jinja2.Environment(loader=template_loader)
+    report_template = template_env.get_template(template_name)
+    return report_template.render(data=report_data, style=report_style)
+
+
+@task
+def send_email_report(email_addr: str, message: str) -> None:
+    """Send a prepared report to the provided address."""
+    e = EmailTask(
+        subject="MyFitnessPaw Report",
+        msg=message,
+        email_from="Lisko Reporting Service",
+    )
+    e.run(email_to=email_addr)
+
+
+@task
+def save_email_report_locally(message: str) -> None:
+    "Temporary function to see the result of the render locally."
+    with open("temp_report.html", "w") as f:
+        f.write(message)
+
+
+@task(name="Backup MFP Database to Dropbox")
+def make_dropbox_backup(
+    dbx_token: str,
+    dbx_mfp_dir: str,
+) -> dropbox.files.FileMetadata:
+    """Upload a copy of the database file to the Dropbox backup location."""
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+    source_path = DB_PATH
+    dest_path = f"{dbx_mfp_dir}/mfp_db_backup_{timestamp}"
+    dbx = dropbox.Dropbox(dbx_token)
+    with open(source_path, "rb") as file:
+        res = dbx.files_upload(file.read(), dest_path, mode=WriteMode.overwrite)
+    return res
+
+
+@task(name="List Available Files in Dropbox Backup Directory")
+def dbx_list_available_backups(
+    dbx_token: str,
+    dbx_mfp_dir: str,
+) -> List[str]:
+    """Query the Dropbox backup directory for available backup files."""
+    dbx = dropbox.Dropbox(dbx_token)
+    res = dbx.files_list_folder(dbx_mfp_dir)
+    return [f.name for f in res.entries]
+
+
+@task(name="Apply Backup Rotation Scheme")
+def apply_backup_rotation_scheme(
+    dbx_token: str,
+    dbx_mfp_dir: str,
+    files_list: Sequence,
+) -> List[Tuple[Any, Any]]:
+    """Apply the current backup rotation scheme (FIFO) to a provided file list."""
+    #  hardcoding it to keep only the most recent 5 for now in order to see how it works.
+    files_to_delete = select_fifo_backups_to_delete(5, files_list)
+    dbx = dropbox.Dropbox(dbx_token)
+    if not files_to_delete:
+        return []
+    deleted = []
+    for filename in files_to_delete:
+        res = dbx.files_delete(f"{dbx_mfp_dir}/{filename}")
+        deleted.append((res.name, res.content_hash))
+    return deleted
