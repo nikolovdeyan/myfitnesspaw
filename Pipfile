@@ -23,6 +23,7 @@ pyls-isort = "*"
 pyls-mypy = "*"
 pyls-black = "*"
 autoflake = "*"
+pytest-mock = "*"
 
 [requires]
 python_version = "3.9"
