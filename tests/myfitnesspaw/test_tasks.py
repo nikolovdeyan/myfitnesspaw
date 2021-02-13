@@ -21,8 +21,24 @@ def dbpath():
         yield test_dbpath
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def db():
+    fake_db = """
+    CREATE TABLE RawDayData (userid text, date text, rawdaydata json, PRIMARY KEY(userid, date));
+    CREATE TABLE Water (userid text, date text, quantity real, PRIMARY KEY(userid, date),
+       CONSTRAINT fk_rawdaydata FOREIGN KEY(userid, date)
+       REFERENCES RawDayData(userid, date) ON DELETE CASCADE
+    );
+    INSERT INTO RawDayData (userid, date, rawdaydata) VALUES
+    ('fake@fakest.com', '2021-01-01', '[{}]'),
+    ('fake@fakest.com', '2021-01-02', '[{}]'),
+    ('fake@fakest.com', '2021-01-03', '[{}]');
+    INSERT INTO Water (userid, date, quantity) VALUES
+    ('fake@fakest.com', '2021-01-01', 0),
+    ('fake@fakest.com', '2021-01-02', 150.0),
+    ('fake@fakest.com', '2021-01-03', 2230.5);
+    """
+
     sql_script = """
     CREATE TABLE TEST (NUMBER INTEGER, DATA TEXT);
     INSERT INTO TEST (NUMBER, DATA) VALUES
@@ -44,23 +60,86 @@ def myfitnesspal_day(mocker):
     day = mocker.Mock(myfitnesspaw.tasks.myfitnesspal.day.Day)
     day.date = datetime.date(2021, 1, 1)
     day.meals = []
-    return day
+    yield day
+
+
+@pytest.fixture()
+def fake_materialized_days(mocker):
+    fake_username = "fake@fakest.com"
+    fake_dates = [
+        datetime.date(2021, 1, 1),
+        datetime.date(2021, 1, 2),
+        datetime.date(2021, 1, 3),
+    ]
+    fake_notes = [
+        {"type": "food", "date": "2021-01-01", "body": "notable"},
+        {"type": "food", "date": "2021-01-02", "body": ""},
+        {"type": "food", "date": "2021-01-03", "body": "noted"},
+    ]
+    fake_water = [0, 2160.0, 1500]
+
+    fake_days = []
+    for i in range(3):
+        day = mocker.Mock(myfitnesspaw._utils.MaterializedDay)
+        day.username = fake_username
+        day.date = fake_dates[i]
+        day.notes = fake_notes[i]
+        day.water = fake_water[i]
+        fake_days.append(day)
+    yield fake_days
 
 
 class TestSQLiteExecuteMany:
-    def test__SQLiteExecuteMany__with_no_arguments__initializes_correctly(self):
+    def test__init__with_no_params__initializes_task(self):
         task = tasks.SQLiteExecuteMany()
-
         assert task
 
-    def test__SQLiteExecuteMany__with_db_and_query__initializes_and_runs(self, db):
+    def test__run__when_query_not_provided_and_not_available__raises_ValueError(
+        self, db
+    ):
+        data = [(14, "fourth"), (15, "fifth")]
+        task = tasks.SQLiteExecuteMany(db=db, data=data)
+        with pytest.raises(ValueError, match="A query string must be provided"):
+            task.run()
+
+    def test__run__when_data_not_provided_and_not_available__raises_ValueError(
+        self, db
+    ):
+        query = ("INSERT INTO TEST (number, data) VALUES (?, ?);",)
+        task = tasks.SQLiteExecuteMany(db=db, query=query)
+        with pytest.raises(ValueError, match="A data list must be provided"):
+            task.run()
+
+    def test__initialization__with_all_params__initializes_and_runs_task(self, db):
         with Flow(name="Test") as f:
             ins = tasks.SQLiteExecuteMany(db=db)(
                 query="INSERT INTO TEST (number, data) VALUES (?, ?);",
                 data=[(14, "fourth"), (15, "fifth")],
             )
             sel = SQLiteQuery(db=db, query="SELECT * FROM TEST")()
+
         out = f.run()
+
+        assert out.is_successful()
+        result = out.result[sel].result
+        assert result == [
+            (11, "first"),
+            (12, "second"),
+            (13, "third"),
+            (14, "fourth"),
+            (15, "fifth"),
+        ]
+
+    def test__task_init_with_no_params__runs_when_params_passed_to_run(self, db):
+        task = tasks.SQLiteExecuteMany(db=db)
+        with Flow(name="Flow") as f:
+            query = "INSERT INTO TEST (number, data) VALUES (?, ?);"
+            data = [(14, "fourth"), (15, "fifth")]
+            ins = task(query=query, data=data)
+            sel = SQLiteQuery(db=db, query="SELECT * FROM TEST")()
+
+        out = f.run()
+
         assert out.is_successful()
         result = out.result[sel].result
         assert result == [
@@ -202,3 +281,36 @@ class TestETLTasks:
         out = f.run()
 
         assert out.is_successful()
+
+    def test__extract_notes_from_days__with_days_list__returns_notes_values(
+        self, fake_materialized_days
+    ):
+        expected_result = [
+            ("fake@fakest.com", datetime.date(2021, 1, 1), "food", "notable"),
+            ("fake@fakest.com", datetime.date(2021, 1, 3), "food", "noted"),
+        ]
+        with Flow(name="test") as f:
+            task = tasks.extract_notes_from_days(fake_materialized_days)
+
+        out = f.run()
+
+        result = out.result[task].result
+        assert out.is_successful()
+        assert expected_result == result
+
+    def test__extract_water_from_days__with_days_list__returns_water_values(
+        self, fake_materialized_days
+    ):
+        expected_result = [
+            ("fake@fakest.com", datetime.date(2021, 1, 1), 0.0),
+            ("fake@fakest.com", datetime.date(2021, 1, 2), 2160.0),
+            ("fake@fakest.com", datetime.date(2021, 1, 3), 1500.0),
+        ]
+        with Flow(name="test") as f:
+            task = tasks.extract_water_from_days(fake_materialized_days)
+
+        out = f.run()
+
+        result = out.result[task].result
+        assert out.is_successful()
+        assert expected_result == result

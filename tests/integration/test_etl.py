@@ -1,6 +1,7 @@
 import myfitnesspaw
 
 # Test where a user uses default configuration to extract 5 days not available in db
+# def test__etl_flow_local_run_for_a_single_date():
 
 # Test where a user uses default confuguration to extract 5 days already in db (with changes)
 
