@@ -15,7 +15,7 @@ def get_etl_flow(user=None, flow_name=None):
         raise ValueError("An user must be provided for the flow.")
     flow_name = flow_name if flow_name else f"MyFitnessPaw ETL <{user.upper()}>"
     with Flow(name=flow_name) as etl_flow:
-        from_date, to_date = tasks.parse_date_parameters(
+        from_date, to_date = tasks.prepare_extraction_start_end_dates(
             from_date_str=Parameter(name="from_date", default=None),
             to_date_str=Parameter(name="to_date", default=None),
         )

@@ -11,18 +11,92 @@ import myfitnesspal
 import prefect
 from dropbox.files import WriteMode
 from myfitnesspal.meal import Meal
-from prefect import task
+from prefect import Task, task
 from prefect.tasks.notifications.email_task import EmailTask
+from prefect.utilities.tasks import defaults_from_attrs
 
 from . import DB_PATH, TEMPLATES_DIR, sql
 from ._utils import MaterializedDay, select_fifo_backups_to_delete, try_parse_date_str
 
 
-@task(name="Parse From and To Dates Parameters")
-def parse_date_parameters(
+class SQLiteExecuteMany(Task):
+    """
+    Task for executing many queries against a SQLite file database.
+
+    Args:
+      - db (str): the location of the database file.
+      - query (str, optional): the optional _default_ query to execute at runtime;
+        can also be provided as a keyword to `run`, which takes precedence over this
+        default.
+      - **kwargs (optional): additional keyword arguments to pass to the standard
+        Task initialization.
+    """
+
+    def __init__(
+        self, db: str = None, query: str = None, data: List[Tuple] = None, **kwargs: Any
+    ):
+        self.db = db
+        self.query = query
+        self.data = data
+        super().__init__(**kwargs)
+
+    @defaults_from_attrs("db", "query", "data")
+    def run(
+        self,
+        db: str = None,
+        query: str = None,
+        data: list = None,
+    ):
+        """
+        Task run method. Executes many queries against a SQLite file database.
+        Args:
+            - db (str, optional): the location of the database file.
+            - query (str, optional): query to execute against database.
+            - data (List[tuple], optional): list of values to use in the query, must be
+              specified using placeholder.
+            - <TODO> enforce_fk_constraint (bool, optional): SQLite does not enforce
+              foreign key constraints by default. To force the query to cascade delete
+              for example set the fk_constraint to True.
+        Returns:
+            - None
+        Raises:
+            - ValueError: if the query parameter is None or an empty string.
+            - DatabaseError: if exception occurs during the query execution.
+        """
+        if not query:
+            raise ValueError("A query string must be provided.")
+
+        if not data:
+            raise ValueError("A data list must be provided.")
+
+        with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
+            # cursor.execute("PRAGMA foreign_keys = YES;") # if enforce_fk_constraint
+            # TODO: add commit as other ExecuteManyTasks
+            cursor.executemany(query, data)
+            conn.commit()
+
+
+@task(name="Prepare Start and End Dates of Extraction Period")
+def prepare_extraction_start_end_dates(
     from_date_str: Union[str, None], to_date_str: Union[str, None]
 ) -> Tuple[datetime.date, datetime.date]:
-    """Returns parsed datetime.date objects from the parameters passed."""
+    """
+    Returns the start and end date as boundaries of the period to be extracted.
+
+    With provided both from_date and to_date, the task returns the parsed dates that
+    encompass the period to be extracted from myfitnesspal (including both the start and
+    end dates). If the arguments are not provided, the dates returned will specify the
+    default 5 day scan period (from 6 days ago to yesterday).
+
+    Args:
+        - from_date_str (str): The date on which to start the extraction period.
+        - to_date_str (str): The date on which to end the extraction period.
+    Returns:
+        - Tuple[datetime.date, datetime.date]: The start and end dates of the extraction
+          period, parsed.
+    Raises:
+        - ValueError: if only one of the dates is provided.
+    """
     today = datetime.date.today()
     default_from_date = today - timedelta(days=6)
     default_to_date = today - timedelta(days=1)
@@ -46,19 +120,40 @@ def parse_date_parameters(
     return (from_date, to_date)
 
 
-@task(name="Prepare Dates Sequence to Extract")
+@task(name="Prepare Sequence of Dates to Extract")
 def generate_dates_to_extract(
     from_date: datetime.date, to_date: datetime.date
 ) -> List[datetime.date]:
-    """Generate a list of dates between a start date and end date."""
+    """
+    Return a list of dates between from_date and to_date to be extracted.
+
+    Args:
+        - from_date (datetime.date): The starting date to generate from.
+        - to_date (datetime.date): The ending date to generate to.
+    Returns:
+        - List[datetime.date]: A list of dates to be extracted from myfitnesspal.
+    Raises:
+        - ValueError: if to_date is before from_date.
+    """
+    if from_date > to_date:
+        raise ValueError("Parameter to_date cannot be before from_date.")
     delta_days = (to_date - from_date).days
     #  including both the starting and ending date
     return [from_date + timedelta(days=i) for i in range(delta_days + 1)]
 
 
-@task(name="Prepare MFP Database")
-def create_mfp_database():
-    """Prepare the database directory and file."""
+@task(name="Create MFP Database Tables")
+def create_mfp_database() -> None:
+    """
+    Create the MyFitnessPaw project sqlite database tables.
+
+    This task executes a series of commands to build the project database tables.
+    All commands include the CREATE TABLE IF NOT EXISTS clause, making this function
+    safe to run against an already existing database, thus making the task idempotent.
+
+    Returns:
+        - None
+    """
     create_mfp_db_script = f"""
     {sql.create_raw_day_table}
     {sql.create_notes_table}
@@ -84,9 +179,23 @@ def create_mfp_database():
 def get_myfitnesspal_day(
     username: str, password: str, date: datetime.date
 ) -> MaterializedDay:
-    """Get the myfitnesspal Day object for a provided date."""
+    """
+    Get the myfitnesspal data associated to a provided date.
+
+    Extracts the myfitnesspal data for the date which includes all food, exercise, notes,
+    and water, but does not include any measurements taken.
+
+    Args:
+        - username (str): The username for the myfitnesspal account.
+        - password (str): The password associated with the provided username.
+    Returns:
+        - MaterializedDay: Containing the extracted information.
+    """
+    logger = prefect.context.get("logger")
     client = myfitnesspal.Client(username=username, password=password)
+    logger.info(client)
     myfitnesspal_day = client.get_date(date)
+    logger.info(myfitnesspal_day)
     #  Materialize lazy loading properties:
     day = MaterializedDay(
         username=username,
@@ -98,6 +207,10 @@ def get_myfitnesspal_day(
         notes=myfitnesspal_day.notes.as_dict(),
         water=myfitnesspal_day.water,
     )
+    logger.info(f"Returned day: {day}")
+    logger.info(f" - username: {day.username}")
+    logger.info(f" - date: {day.date}")
+    logger.info(f" - meals: {day.meals}")
     return day
 
 

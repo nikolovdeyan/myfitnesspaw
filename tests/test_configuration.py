@@ -28,7 +28,7 @@ dbx_backup_dir = "/mfp_db_backups"
 
 class TestMFPRepo:
     def test_configuration_file_is_available(self):
-        assert os.path.exists(ROOT_DIR.joinpath(MFP_CONFIG_FILE)) == 1
+        assert os.path.exists(ROOT_DIR.joinpath(MFP_CONFIG_FILE))
 
     def test_configuration_file_uses_local_secrets(self):
         mfp_config = toml.load(ROOT_DIR.joinpath(MFP_CONFIG_FILE))
