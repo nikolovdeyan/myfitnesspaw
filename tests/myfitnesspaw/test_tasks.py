@@ -21,54 +21,261 @@ def dbpath():
         yield test_dbpath
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def db():
-    sql_script = """
-    CREATE TABLE TEST (NUMBER INTEGER, DATA TEXT);
-    INSERT INTO TEST (NUMBER, DATA) VALUES
-    (11, 'first'),
-    (12, 'second'),
-    (13, 'third');
+    fake_db = """
+    CREATE TABLE RawDayData (userid text, date text, rawdaydata json, PRIMARY KEY(userid, date));
+    CREATE TABLE Water (userid text, date text, quantity real, PRIMARY KEY(userid, date),
+       CONSTRAINT fk_rawdaydata FOREIGN KEY(userid, date)
+       REFERENCES RawDayData(userid, date) ON DELETE CASCADE
+    );
+    INSERT INTO RawDayData (userid, date, rawdaydata) VALUES
+    ('fake@fakest.com', '2021-01-01', '[{}]'),
+    ('fake@fakest.com', '2021-01-02', '[{}]'),
+    ('fake@fakest.com', '2021-01-03', '[{}]');
+    INSERT INTO Water (userid, date, quantity) VALUES
+    ('fake@fakest.com', '2021-01-01', 0),
+    ('fake@fakest.com', '2021-01-02', 150.0),
+    ('fake@fakest.com', '2021-01-03', 2230.5);
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         test_db = pathlib.Path(tmpdir).joinpath("test.db")
         with closing(sqlite3.connect(test_db)) as conn:
             with closing(conn.cursor()) as c:
-                c.executescript(sql_script)
+                c.executescript(fake_db)
                 conn.commit()
         yield test_db
 
 
 @pytest.fixture()
 def myfitnesspal_day(mocker):
+    """
+    Day(
+    date (datetime.date)
+    meals (Optional[List[Meal]]) ; Meals consist of name and list of Entries
+    goals (Dict[str, float])
+    notes (Callable[[], str])
+    water (Callable [[], float])
+    exercises (Callable [[], List[Exercise]])
+    complete bool (not used)
+    )
+    """
     day = mocker.Mock(myfitnesspaw.tasks.myfitnesspal.day.Day)
     day.date = datetime.date(2021, 1, 1)
     day.meals = []
-    return day
+    yield day
+
+
+@pytest.fixture()
+def fake_materialized_days(mocker):
+    fake_username = "fake@fakest.com"
+    fake_dates = [
+        datetime.date(2021, 1, 1),
+        datetime.date(2021, 1, 2),
+        datetime.date(2021, 1, 3),
+    ]
+    fake_notes = [
+        {"type": "food", "date": "2021-01-01", "body": "notable"},
+        {"type": "food", "date": "2021-01-02", "body": ""},
+        {"type": "food", "date": "2021-01-03", "body": "noted"},
+    ]
+    fake_water = [0, 2160.0, 1500]
+
+    fake_days = []
+    for i in range(3):
+        day = mocker.Mock(myfitnesspaw._utils.MaterializedDay)
+        day.username = fake_username
+        day.date = fake_dates[i]
+        day.notes = fake_notes[i]
+        day.water = fake_water[i]
+        fake_days.append(day)
+    yield fake_days
 
 
 class TestSQLiteExecuteMany:
-    def test__SQLiteExecuteMany__with_no_arguments__initializes_correctly(self):
+    def test__init__with_no_params__initializes_task(self):
         task = tasks.SQLiteExecuteMany()
-
         assert task
 
-    def test__SQLiteExecuteMany__with_db_and_query__initializes_and_runs(self, db):
+    def test__run__when_query_not_provided_and_not_available__raises_ValueError(
+        self, db
+    ):
+        data = [("fake@fakest.com", "2020-12-01", 0.0)]
+        task = tasks.SQLiteExecuteMany(db=db, data=data)
+
+        with pytest.raises(ValueError, match="A query string must be provided"):
+            task.run()
+
+    def test__run__when_data_not_provided_and_not_available__raises_ValueError(
+        self, db
+    ):
+        query = "INSERT INTO Water (userid, date, quantity) VALUES ('a@a.com', '2020-12-01', 1.1);"
+        task = tasks.SQLiteExecuteMany(db=db, query=query)
+        with pytest.raises(ValueError, match="A data list must be provided"):
+            task.run()
+
+    def test__task_init_with_all_params__initializes_and_runs_task(self, db):
+        query = "INSERT INTO RawDayData (userid, date, rawdaydata) VALUES (?, ?, ?);"
+        data = [
+            ("tester1@test.com", "2020-12-30", "[{}]"),
+            ("tester1@test.com", "2020-12-31", "[{}]"),
+        ]
+
         with Flow(name="Test") as f:
-            ins = tasks.SQLiteExecuteMany(db=db)(
-                query="INSERT INTO TEST (number, data) VALUES (?, ?);",
-                data=[(14, "fourth"), (15, "fifth")],
-            )
-            sel = SQLiteQuery(db=db, query="SELECT * FROM TEST")()
+            task = tasks.SQLiteExecuteMany(db=db)(query=query, data=data)
+            select_result = SQLiteQuery(
+                db=db,
+                query="SELECT * FROM RawDayData WHERE userid = 'tester1@test.com';",
+            )()
+
         out = f.run()
+
         assert out.is_successful()
-        result = out.result[sel].result
+        result = out.result[select_result].result
         assert result == [
-            (11, "first"),
-            (12, "second"),
-            (13, "third"),
-            (14, "fourth"),
-            (15, "fifth"),
+            ("tester1@test.com", "2020-12-30", "[{}]"),
+            ("tester1@test.com", "2020-12-31", "[{}]"),
+        ]
+
+    def test__task_init_with_no_params__runs_when_params_passed_to_run(self, db):
+        task = tasks.SQLiteExecuteMany(db=db)
+        with Flow(name="Flow") as f:
+            query = (
+                "INSERT INTO RawDayData (userid, date, rawdaydata) VALUES (?, ?, ?);"
+            )
+            data = [
+                ("tester1@test.com", "2020-12-30", "[{}]"),
+                ("tester1@test.com", "2020-12-31", "[{}]"),
+            ]
+            task_result = task(query=query, data=data)
+            select_result = SQLiteQuery(
+                db=db,
+                query="SELECT * FROM RawDayData WHERE userid = 'tester1@test.com';",
+            )()
+
+        out = f.run()
+
+        assert out.is_successful()
+        result = out.result[select_result].result
+        assert result == [
+            ("tester1@test.com", "2020-12-30", "[{}]"),
+            ("tester1@test.com", "2020-12-31", "[{}]"),
+        ]
+
+    def test__task_init_with_enforce_fk_false__does_not_cascade_delete(self, db):
+        task = tasks.SQLiteExecuteMany(db=db, enforce_fk=False)
+        query = "DELETE FROM RawDayData WHERE userid = ? AND date = ?;"
+        data = [
+            ("fake@fakest.com", "2021-01-01"),
+            ("fake@fakest.com", "2021-01-02"),
+        ]
+        with Flow(name="Flow") as f:
+            task_result = task(query=query, data=data)
+            select_result = SQLiteQuery(
+                db=db,
+                query="SELECT * FROM Water WHERE userid = 'fake@fakest.com';",
+            )()
+
+        out = f.run()
+
+        assert out.is_successful()
+        result = out.result[select_result].result
+        assert result == [
+            ("fake@fakest.com", "2021-01-01", 0.0),
+            ("fake@fakest.com", "2021-01-02", 150.0),
+            ("fake@fakest.com", "2021-01-03", 2230.5),
+        ]
+
+    def test__task_run_with_enforce_fk_false__does_not_cascade_delete(self, db):
+        task = tasks.SQLiteExecuteMany(db=db)
+        query = "DELETE FROM RawDayData WHERE userid = ? AND date = ?;"
+        data = [
+            ("fake@fakest.com", "2021-01-01"),
+            ("fake@fakest.com", "2021-01-02"),
+        ]
+        with Flow(name="Flow") as f:
+            task_result = task(query=query, data=data, enforce_fk=False)
+            select_result = SQLiteQuery(
+                db=db,
+                query="SELECT * FROM Water WHERE userid = 'fake@fakest.com';",
+            )()
+
+        out = f.run()
+
+        assert out.is_successful()
+        result = out.result[select_result].result
+        assert result == [
+            ("fake@fakest.com", "2021-01-01", 0.0),
+            ("fake@fakest.com", "2021-01-02", 150.0),
+            ("fake@fakest.com", "2021-01-03", 2230.5),
+        ]
+
+    def test__task_run_with_no_enforce_fk_passed__does_not_cascade_delete(self, db):
+        task = tasks.SQLiteExecuteMany(db=db)
+        query = "DELETE FROM RawDayData WHERE userid = ? AND date = ?;"
+        data = [
+            ("fake@fakest.com", "2021-01-01"),
+            ("fake@fakest.com", "2021-01-02"),
+        ]
+        with Flow(name="Flow") as f:
+            task_result = task(query=query, data=data)
+            select_result = SQLiteQuery(
+                db=db,
+                query="SELECT * FROM Water WHERE userid = 'fake@fakest.com';",
+            )()
+
+        out = f.run()
+
+        assert out.is_successful()
+        result = out.result[select_result].result
+        assert result == [
+            ("fake@fakest.com", "2021-01-01", 0.0),
+            ("fake@fakest.com", "2021-01-02", 150.0),
+            ("fake@fakest.com", "2021-01-03", 2230.5),
+        ]
+
+    def test__task_init_with_enforce_fk__cascade_deletes_data(self, db):
+        task = tasks.SQLiteExecuteMany(db=db, enforce_fk=True)
+        query = "DELETE FROM RawDayData WHERE userid = ? AND date = ?;"
+        data = [
+            ("fake@fakest.com", "2021-01-01"),
+            ("fake@fakest.com", "2021-01-02"),
+        ]
+        with Flow(name="Flow") as f:
+            task_result = task(query=query, data=data)
+            select_result = SQLiteQuery(
+                db=db,
+                query="SELECT * FROM Water WHERE userid = 'fake@fakest.com';",
+            )()
+
+        out = f.run()
+
+        assert out.is_successful()
+        result = out.result[select_result].result
+        assert result == [
+            ("fake@fakest.com", "2021-01-03", 2230.5),
+        ]
+
+    def test__task_run_with_enforce_fk__cascade_deletes_data(self, db):
+        task = tasks.SQLiteExecuteMany(db=db)
+        query = "DELETE FROM RawDayData WHERE userid = ? AND date = ?;"
+        data = [
+            ("fake@fakest.com", "2021-01-01"),
+            ("fake@fakest.com", "2021-01-02"),
+        ]
+        with Flow(name="Flow") as f:
+            task_result = task(query=query, data=data, enforce_fk=True)
+            select_result = SQLiteQuery(
+                db=db,
+                query="SELECT * FROM Water WHERE userid = 'fake@fakest.com';",
+            )()
+
+        out = f.run()
+
+        assert out.is_successful()
+        result = out.result[select_result].result
+        assert result == [
+            ("fake@fakest.com", "2021-01-03", 2230.5),
         ]
 
 
@@ -189,16 +396,56 @@ class TestETLTasks:
     ):
         fake_myfitnesspal = mocker.patch("myfitnesspaw.tasks.myfitnesspal")
         fake_client = mocker.patch("myfitnesspaw.tasks.myfitnesspal.Client")
-        fake_day = mocker.patch("myfitnesspaw.tasks.myfitnesspal.day.Day")
         fake_myfitnesspal.Client.return_value = fake_client
         fake_client.get_date.return_value = myfitnesspal_day
 
-        fake_username = "foofoo"
-        fake_password = "barbar"
-        query_date = datetime.date(2021, 1, 1)
         with Flow(name="test") as f:
-            task = tasks.get_myfitnesspal_day(fake_username, fake_password, query_date)
+            task = tasks.get_myfitnesspal_day(
+                username="foo@bar.com", password="abcde", date=datetime.date(2021, 1, 1)
+            )
 
         out = f.run()
 
+        result = out.result[task].result
         assert out.is_successful()
+        assert isinstance(result, myfitnesspaw._utils.MaterializedDay)
+        assert result.username == "foo@bar.com"
+        assert result.date == datetime.date(2021, 1, 1)
+        #  assert result.meals ==
+        #  assert result.exercises ==
+        #  assert result.goals ==
+        #  assert result.notes ==
+        #  assert result.water ==
+
+    def test__extract_notes_from_days__with_days_list__returns_notes_values(
+        self, fake_materialized_days
+    ):
+        expected_result = [
+            ("fake@fakest.com", datetime.date(2021, 1, 1), "food", "notable"),
+            ("fake@fakest.com", datetime.date(2021, 1, 3), "food", "noted"),
+        ]
+        with Flow(name="test") as f:
+            task = tasks.extract_notes_from_days(fake_materialized_days)
+
+        out = f.run()
+
+        result = out.result[task].result
+        assert out.is_successful()
+        assert expected_result == result
+
+    def test__extract_water_from_days__with_days_list__returns_water_values(
+        self, fake_materialized_days
+    ):
+        expected_result = [
+            ("fake@fakest.com", datetime.date(2021, 1, 1), 0.0),
+            ("fake@fakest.com", datetime.date(2021, 1, 2), 2160.0),
+            ("fake@fakest.com", datetime.date(2021, 1, 3), 1500.0),
+        ]
+        with Flow(name="test") as f:
+            task = tasks.extract_water_from_days(fake_materialized_days)
+
+        out = f.run()
+
+        result = out.result[task].result
+        assert out.is_successful()
+        assert expected_result == result

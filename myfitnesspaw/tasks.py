@@ -2,7 +2,7 @@ import datetime
 import sqlite3
 from contextlib import closing
 from datetime import timedelta
-from typing import Any, List, Optional, Sequence, Tuple, Union
+from typing import Any, List, Sequence, Tuple, Union, cast
 
 import dropbox
 import jinja2
@@ -24,38 +24,51 @@ class SQLiteExecuteMany(Task):
     Task for executing many queries against a SQLite file database.
 
     Args:
-      - db (str): the location of the database file.
+      - db (str, optional): the location of the database file.
       - query (str, optional): the optional _default_ query to execute at runtime;
         can also be provided as a keyword to `run`, which takes precedence over this
         default.
+      - data (List[Tuple]): list of values to be used with the query.
+      - enforce_fk (bool, optional): SQLite does not enforce foreign key constraints by
+        default (see https://sqlite.org/foreignkeys.html). In order to enable foreign key
+        support, an additional `PRAGMA foreign_keys = YES;` statement is executed before
+        the main task statement. TODO: There is an additional case where the sqlite
+        database has been compiled without FK support which is not yet handled by this
+        task.
       - **kwargs (optional): additional keyword arguments to pass to the standard
         Task initialization.
     """
 
     def __init__(
-        self, db: str = None, query: str = None, data: List[Tuple] = None, **kwargs: Any
+        self,
+        db: str = None,
+        query: str = None,
+        data: List[tuple] = None,
+        enforce_fk: bool = None,
+        **kwargs: Any,
     ):
         self.db = db
         self.query = query
         self.data = data
+        self.enforce_fk = enforce_fk
         super().__init__(**kwargs)
 
-    @defaults_from_attrs("db", "query", "data")
+    @defaults_from_attrs("db", "query", "data", "enforce_fk")
     def run(
         self,
         db: str = None,
         query: str = None,
         data: list = None,
+        enforce_fk: bool = None,
     ):
         """
         Task run method. Executes many queries against a SQLite file database.
         Args:
-            - db (str, optional): the location of the database file.
+            - db (str, optional):
             - query (str, optional): query to execute against database.
-            - data (List[tuple], optional): list of values to use in the query, must be
-              specified using placeholder.
-            - <TODO> enforce_fk_constraint (bool, optional): SQLite does not enforce
-              foreign key constraints by default. To force the query to cascade delete
+            - data (List[tuple], optional): list of values to use in the query.
+            - enforce_fk (bool, optional): SQLite does not enforce foreign
+              key constraints by default. To force the query to cascade delete
               for example set the fk_constraint to True.
         Returns:
             - None
@@ -63,15 +76,20 @@ class SQLiteExecuteMany(Task):
             - ValueError: if the query parameter is None or an empty string.
             - DatabaseError: if exception occurs during the query execution.
         """
+        if not db:
+            raise ValueError("A databse connection string must be provided.")
+
         if not query:
             raise ValueError("A query string must be provided.")
 
         if not data:
             raise ValueError("A data list must be provided.")
 
+        db = cast(str, db)
+        query = cast(str, query)
         with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-            # cursor.execute("PRAGMA foreign_keys = YES;") # if enforce_fk_constraint
-            # TODO: add commit as other ExecuteManyTasks
+            if enforce_fk is True:
+                cursor.execute("PRAGMA foreign_keys = YES;")
             cursor.executemany(query, data)
             conn.commit()
 
@@ -273,11 +291,9 @@ def deserialize_records_to_process(
 
 
 @task(name="Extract Notes from Day Sequence")
-def extract_notes_from_days(
-    days: Sequence[MaterializedDay],
-) -> List[Tuple[str, datetime.date, Optional[Any], Optional[Any]]]:
+def extract_notes_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
     """Extract myfitnesspal Food Notes values from a sequence of myfitnesspal days."""
-    result = [
+    return [
         (
             day.username,
             day.date,
@@ -287,7 +303,6 @@ def extract_notes_from_days(
         for day in days
         if day.notes["body"]
     ]
-    return result
 
 
 @task(name="Extract Water from Day Sequence")
