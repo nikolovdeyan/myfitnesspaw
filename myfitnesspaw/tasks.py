@@ -29,25 +29,37 @@ class SQLiteExecuteMany(Task):
         can also be provided as a keyword to `run`, which takes precedence over this
         default.
       - data (List[Tuple]): list of values to be used with the query.
+      - enforce_fk (bool, optional): SQLite does not enforce foreign key constraints by
+        default (see https://sqlite.org/foreignkeys.html). In order to enable foreign key
+        support, an additional `PRAGMA foreign_keys = YES;` statement is executed before
+        the main task statement. TODO: There is an additional case where the sqlite
+        database has been compiled without FK support which is not yet handled by this
+        task.
       - **kwargs (optional): additional keyword arguments to pass to the standard
         Task initialization.
-    See also: https://sqlite.org/foreignkeys.html
     """
 
     def __init__(
-        self, db: str = None, query: str = None, data: List[tuple] = None, **kwargs: Any
+        self,
+        db: str = None,
+        query: str = None,
+        data: List[tuple] = None,
+        enforce_fk: bool = None,
+        **kwargs: Any,
     ):
         self.db = db
         self.query = query
         self.data = data
+        self.enforce_fk = enforce_fk
         super().__init__(**kwargs)
 
-    @defaults_from_attrs("db", "query", "data")
+    @defaults_from_attrs("db", "query", "data", "enforce_fk")
     def run(
         self,
         db: str = None,
         query: str = None,
         data: list = None,
+        enforce_fk: bool = None,
     ):
         """
         Task run method. Executes many queries against a SQLite file database.
@@ -55,8 +67,8 @@ class SQLiteExecuteMany(Task):
             - db (str, optional):
             - query (str, optional): query to execute against database.
             - data (List[tuple], optional): list of values to use in the query.
-            - <TODO> enforce_fk_constraint (bool, optional): SQLite does not enforce
-              foreign key constraints by default. To force the query to cascade delete
+            - enforce_fk (bool, optional): SQLite does not enforce foreign
+              key constraints by default. To force the query to cascade delete
               for example set the fk_constraint to True.
         Returns:
             - None
@@ -76,9 +88,8 @@ class SQLiteExecuteMany(Task):
         db = cast(str, db)
         query = cast(str, query)
         with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-            # TODO: enforce_fk_constraint
-            # cursor.execute("PRAGMA foreign_keys = YES;")
-            # TODO: add commit as other ExecuteManyTasks
+            if enforce_fk is True:
+                cursor.execute("PRAGMA foreign_keys = YES;")
             cursor.executemany(query, data)
             conn.commit()
 
