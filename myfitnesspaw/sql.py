@@ -145,40 +145,40 @@ INSERT OR REPLACE INTO RawDayData(userid, date, rawdaydata)
 VALUES (?, ?, ?)
 """
 
-insert_note_record = """
+insert_notes = """
 INSERT INTO Notes(userid, date, type, body) VALUES (?, ?, ?, ?)
 """
 
-insert_water_record = """
+insert_water = """
 INSERT INTO Water(userid, date, quantity) VALUES (?, ?, ?)
 """
 
-insert_goals_record = """
+insert_goals = """
 INSERT INTO Goals(userid, date, calories, carbs, fat, protein, sodium, sugar)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 """
-insert_meal_record = """
+insert_meals = """
 INSERT INTO Meals(userid, date, name, calories, carbs, fat, protein, sodium, sugar)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
-insert_mealentry_record = """
+insert_mealentries = """
 INSERT INTO MealEntries(userid, date, meal_name, short_name, quantity, unit,
  calories, carbs, fat, protein, sodium, sugar)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
-insert_cardioexercises_command = """
+insert_cardioexercises = """
 INSERT INTO CardioExercises(userid, date, exercise_name, minutes, calories_burned)
 VALUES (?, ?, ?, ?, ?)
 """
 
-insert_strengthexercises_command = """
+insert_strengthexercises = """
 INSERT INTO StrengthExercises(userid, date, exercise_name, sets, reps, weight)
 VALUES (?, ?, ?, ?, ?, ?)
 """
 
-insert_measurements_command = """
+insert_measurements = """
 INSERT OR REPLACE INTO Measurements(userid, date, measure_name, value)
 VALUES (?, ?, ?, ?)
 """

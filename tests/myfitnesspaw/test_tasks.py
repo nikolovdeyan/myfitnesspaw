@@ -425,7 +425,7 @@ class TestETLTasks:
             ("fake@fakest.com", datetime.date(2021, 1, 3), "food", "noted"),
         ]
         with Flow(name="test") as f:
-            task = tasks.extract_notes_from_days(fake_materialized_days)
+            task = tasks.extract_notes(fake_materialized_days)
 
         out = f.run()
 
@@ -442,7 +442,7 @@ class TestETLTasks:
             ("fake@fakest.com", datetime.date(2021, 1, 3), 1500.0),
         ]
         with Flow(name="test") as f:
-            task = tasks.extract_water_from_days(fake_materialized_days)
+            task = tasks.extract_water(fake_materialized_days)
 
         out = f.run()
 

@@ -73,8 +73,10 @@ class SQLiteExecuteMany(Task):
         Returns:
             - None
         Raises:
-            - ValueError: if the query parameter is None or an empty string.
-            - DatabaseError: if exception occurs during the query execution.
+            - ValueError: if `query` is None or empty string.
+            - ValueError: if `db` is not provided at either initialization or runtime.
+            - ValueError: if `data` is not provided at either initialization or runtime.
+              Passing an empty list as `data` is allowed.
         """
         if not db:
             raise ValueError("A databse connection string must be provided.")
@@ -82,7 +84,7 @@ class SQLiteExecuteMany(Task):
         if not query:
             raise ValueError("A query string must be provided.")
 
-        if not data:
+        if data is None:  # allow empty lists to proceed,
             raise ValueError("A data list must be provided.")
 
         db = cast(str, db)
@@ -209,11 +211,8 @@ def get_myfitnesspal_day(
     Returns:
         - MaterializedDay: Containing the extracted information.
     """
-    logger = prefect.context.get("logger")
     client = myfitnesspal.Client(username=username, password=password)
-    logger.info(client)
     myfitnesspal_day = client.get_date(date)
-    logger.info(myfitnesspal_day)
     #  Materialize lazy loading properties:
     day = MaterializedDay(
         username=username,
@@ -225,10 +224,6 @@ def get_myfitnesspal_day(
         notes=myfitnesspal_day.notes.as_dict(),
         water=myfitnesspal_day.water,
     )
-    logger.info(f"Returned day: {day}")
-    logger.info(f" - username: {day.username}")
-    logger.info(f" - date: {day.date}")
-    logger.info(f" - meals: {day.meals}")
     return day
 
 
@@ -291,7 +286,7 @@ def deserialize_records_to_process(
 
 
 @task(name="Extract Notes from Day Sequence")
-def extract_notes_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+def extract_notes(days: Sequence[MaterializedDay]) -> List[Tuple]:
     """Extract myfitnesspal Food Notes values from a sequence of myfitnesspal days."""
     return [
         (
@@ -306,13 +301,13 @@ def extract_notes_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
 
 
 @task(name="Extract Water from Day Sequence")
-def extract_water_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+def extract_water(days: Sequence[MaterializedDay]) -> List[Tuple]:
     """Extract myfitnesspal water values from a sequence of myfitnesspal days."""
     return [(day.username, day.date, day.water) for day in days]
 
 
 @task(name="Extract Goals from Day Sequence")
-def extract_goals_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+def extract_goals(days: Sequence[MaterializedDay]) -> List[Tuple]:
     """Extract myfitnesspal daily goals from a sequence of myfitnesspal days."""
     return [
         (
@@ -330,7 +325,7 @@ def extract_goals_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
 
 
 @task(name="Extract Meals from Day Sequence")
-def extract_meals_from_days(days: Sequence[MaterializedDay]) -> List[Meal]:
+def extract_meals(days: Sequence[MaterializedDay]) -> List[Meal]:
     """Extract myfitnesspal Meal items from a sequence of myfitnesspal Days."""
     for day in days:
         for meal in day.meals:
@@ -342,7 +337,7 @@ def extract_meals_from_days(days: Sequence[MaterializedDay]) -> List[Meal]:
 
 
 @task(name="Extract Meal Records from Meal Sequence")
-def extract_meal_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
+def extract_meal_records(meals: Sequence[Meal]) -> List[Tuple]:
     """Extract meal entry records from a sequence of myfitnesspal meals."""
     return [
         (
@@ -361,7 +356,7 @@ def extract_meal_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
 
 
 @task(name="Extract MealEntry Records from Meal Sequence")
-def extract_mealentry_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
+def extract_mealentries(meals: Sequence[Meal]) -> List[Tuple]:
     """Extract meal entries records from a sequence of myfitnesspal meals."""
     return [
         (
@@ -384,7 +379,7 @@ def extract_mealentry_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
 
 
 @task(name="Extract Cardio Exercises from Day Sequence")
-def extract_cardio_exercises_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+def extract_cardio_exercises(days: Sequence[MaterializedDay]) -> List[Tuple]:
     """Extract cardio exercise entries from a sequence of myfitnesspal days."""
     return [
         (
@@ -400,7 +395,7 @@ def extract_cardio_exercises_from_days(days: Sequence[MaterializedDay]) -> List[
 
 
 @task(name="Extract Strength Exercises from Days Sequence")
-def extract_strength_exercises_from_days(
+def extract_strength_exercises(
     days: Sequence[MaterializedDay],
 ) -> List[Tuple]:
     """Extract strength exercise entries from a sequence of myfitnesspal days."""
@@ -433,87 +428,6 @@ def mfp_select_raw_days(
             day_record = (username, date, day_json)
             mfp_existing_days.append(day_record)
     return mfp_existing_days
-
-
-@task(name="Load Raw Day Records -> (MyFitnessPaw)")
-def mfp_insert_raw_days(days_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of day values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
-        conn.commit()
-
-
-@task(name="Load Notes Records -> (MyFitnessPaw)")
-def mfp_insert_notes(notes_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of note values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_note_record, notes_values)
-        conn.commit()
-
-
-@task(name="Load Water Records -> (MyFitnessPaw)")
-def mfp_insert_water(water_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of water records values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_water_record, water_values)
-        conn.commit()
-
-
-@task(name="Load Goals Records -> (MyFitnessPaw)")
-def mfp_insert_goals(goals_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of goals records in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_goals_record, goals_values)
-        conn.commit()
-
-
-@task(name="Load Meal Records -> (MyFitnessPaw)")
-def mfp_insert_meals(meals_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of meal values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_meal_record, meals_values)
-        conn.commit()
-
-
-@task(name="Load MealEntry Records -> (MyFitnessPaw)")
-def mfp_insert_mealentries(mealentries_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of meal entry values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_mealentry_record, mealentries_values)
-        conn.commit()
-
-
-@task(name="Load CardioExercises Records -> (MyFitnessPaw)")
-def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple]) -> None:
-    """Insert a sequence of cardio exercise entries in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_cardioexercises_command, cardio_list)
-        conn.commit()
-
-
-@task(name="Load StrengthExercises Records -> (MyFitnessPaw)")
-def mfp_insert_strength_exercises(strength_list: Sequence[Tuple]) -> None:
-    """Insert a sequence of strength exercise values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_strengthexercises_command, strength_list)
-        conn.commit()
-
-
-@task(name="Load Measurement Records -> (MyFitnessPaw)")
-def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
-    """Insert a sequence of measurements in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_measurements_command, measurements)
-        conn.commit()
 
 
 @task
