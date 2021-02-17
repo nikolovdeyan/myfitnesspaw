@@ -48,25 +48,6 @@ def db():
 
 
 @pytest.fixture()
-def myfitnesspal_day(mocker):
-    """
-    Day(
-    date (datetime.date)
-    meals (Optional[List[Meal]]) ; Meals consist of name and list of Entries
-    goals (Dict[str, float])
-    notes (Callable[[], str])
-    water (Callable [[], float])
-    exercises (Callable [[], List[Exercise]])
-    complete bool (not used)
-    )
-    """
-    day = mocker.Mock(myfitnesspaw.tasks.myfitnesspal.day.Day)
-    day.date = datetime.date(2021, 1, 1)
-    day.meals = []
-    yield day
-
-
-@pytest.fixture()
 def fake_materialized_days(mocker):
     fake_username = "fake@fakest.com"
     fake_dates = [
@@ -80,6 +61,11 @@ def fake_materialized_days(mocker):
         {"type": "food", "date": "2021-01-03", "body": "noted"},
     ]
     fake_water = [0, 2160.0, 1500]
+    fake_measurements = [
+        {"Weight": 88.8, "Mood": 5},
+        {},
+        {"Weight": 88.0},
+    ]
 
     fake_days = []
     for i in range(3):
@@ -88,6 +74,7 @@ def fake_materialized_days(mocker):
         day.date = fake_dates[i]
         day.notes = fake_notes[i]
         day.water = fake_water[i]
+        day.measurements = fake_measurements[i]
         fake_days.append(day)
     yield fake_days
 
@@ -391,33 +378,7 @@ class TestETLTasks:
         assert out.is_successful()
         assert all(tbl in actual_tables for tbl in expected_tables)
 
-    def test__get_myfitnesspal_day__with_good_params__returns_materialized_day(
-        self, mocker, myfitnesspal_day
-    ):
-        fake_myfitnesspal = mocker.patch("myfitnesspaw.tasks.myfitnesspal")
-        fake_client = mocker.patch("myfitnesspaw.tasks.myfitnesspal.Client")
-        fake_myfitnesspal.Client.return_value = fake_client
-        fake_client.get_date.return_value = myfitnesspal_day
-
-        with Flow(name="test") as f:
-            task = tasks.get_myfitnesspal_day(
-                username="foo@bar.com", password="abcde", date=datetime.date(2021, 1, 1)
-            )
-
-        out = f.run()
-
-        result = out.result[task].result
-        assert out.is_successful()
-        assert isinstance(result, myfitnesspaw._utils.MaterializedDay)
-        assert result.username == "foo@bar.com"
-        assert result.date == datetime.date(2021, 1, 1)
-        #  assert result.meals ==
-        #  assert result.exercises ==
-        #  assert result.goals ==
-        #  assert result.notes ==
-        #  assert result.water ==
-
-    def test__extract_notes_from_days__with_days_list__returns_notes_values(
+    def test__extract_notes__with_days_list__returns_notes_values(
         self, fake_materialized_days
     ):
         expected_result = [
@@ -433,7 +394,7 @@ class TestETLTasks:
         assert out.is_successful()
         assert expected_result == result
 
-    def test__extract_water_from_days__with_days_list__returns_water_values(
+    def test__extract_water__with_days_list__returns_water_values(
         self, fake_materialized_days
     ):
         expected_result = [
@@ -443,6 +404,23 @@ class TestETLTasks:
         ]
         with Flow(name="test") as f:
             task = tasks.extract_water(fake_materialized_days)
+
+        out = f.run()
+
+        result = out.result[task].result
+        assert out.is_successful()
+        assert expected_result == result
+
+    def test__extract_measures__with_days_list__returns_measures_values(
+        self, fake_materialized_days
+    ):
+        expected_result = [
+            ("fake@fakest.com", datetime.date(2021, 1, 1), "Weight", 88.8),
+            ("fake@fakest.com", datetime.date(2021, 1, 1), "Mood", 5.0),
+            ("fake@fakest.com", datetime.date(2021, 1, 3), "Weight", 88.0),
+        ]
+        with Flow(name="test") as f:
+            task = tasks.extract_measures(fake_materialized_days)
 
         out = f.run()
 

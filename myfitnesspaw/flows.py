@@ -3,7 +3,7 @@ This file contains the predefined Prefect Flows to use with MyFitnessPaw.
 """
 
 import prefect
-from prefect import Flow, flatten, mapped, unmapped
+from prefect import Flow, flatten, unmapped
 from prefect.core import Parameter
 from prefect.tasks.secrets import PrefectSecret
 
@@ -32,6 +32,7 @@ def get_etl_flow(user=None, flow_name=None):
             date=dates_to_extract,
             username=unmapped(username),
             password=unmapped(password),
+            measures=measures,
         )
         serialized_extracted_days = tasks.serialize_myfitnesspal_days(extracted_days)
         mfp_existing_days = tasks.mfp_select_raw_days(
@@ -95,12 +96,7 @@ def get_etl_flow(user=None, flow_name=None):
             data=strength_records,
         )
 
-        measurements_records = tasks.get_myfitnesspal_measure(
-            measure=mapped(measures),
-            username=username,
-            password=password,
-            dates_to_extract=dates_to_extract,
-        )
+        measurements_records = tasks.extract_measures(days_to_process)
         measurements_load_state = mfp_insertmany(  # noqa
             query=sql.insert_measurements,
             data=flatten(measurements_records),

@@ -5,8 +5,10 @@ Contains helper functions for various tasks.
 """
 
 import datetime
+from dataclasses import dataclass
 from typing import Dict, List, Sequence
 
+import myfitnesspal
 import prefect
 import requests
 from myfitnesspal.exercise import Exercise
@@ -68,23 +70,61 @@ def get_local_run_config() -> LocalRun:
     )
 
 
+@dataclass
 class MaterializedDay:
     """A class to hold the properties from myfitnesspal that we are working with."""
 
-    def __init__(
-        self,
-        username: str,
-        date: datetime.date,
-        meals: List[Meal],
-        exercises: List[Exercise],
-        goals: Dict[str, float],
-        notes: Dict,  # currently python-myfitnesspal only scrapes food notes
-        water: float,
-    ):
-        self.username = username
-        self.date = date
-        self.meals = meals
-        self.exercises = exercises
-        self.goals = goals
-        self.notes = notes
-        self.water = water
+    username: str
+    date: datetime.date
+    meals: List[Meal]
+    exercises: List[Exercise]
+    goals: Dict[str, float]
+    notes: Dict  # currently python-myfitnesspal only scrapes food notes
+    water: float
+    measurements: Dict[str, float]
+
+
+class MyfitnesspalClientAdapter:
+    def __init__(self, username=None, password=None):
+        if username is None or password is None:
+            raise ValueError("Username and password arguments must be provided.")
+        self._username = username
+        self._password = password
+        self._client = myfitnesspal.Client(self._username, self._password)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, err_type, err_value, err_traceback):
+        self.close()
+
+    def _get_measurements(self, date, measures):
+        measurements = {}
+        for measure in measures:
+            try:
+                response = self._client.get_measurements(measure, date, date)
+                measurements[measure] = response[date]
+            except ValueError:
+                print(f"No measure records found for {measure} measure.")
+        return measurements
+
+    def _get_date(self, date):
+        return self._client.get_date(date)
+
+    def get_myfitnesspaw_day(self, date, measures):
+        day = self._get_date(date)
+        measurements = self._get_measurements(date, measures)
+        mfp_day = MaterializedDay(
+            username=self._username,
+            date=date,
+            meals=day.meals,
+            exercises=day.exercises,
+            goals=day.goals,
+            notes=day.notes.as_dict(),
+            water=day.water,
+            measurements=measurements,
+        )
+        return mfp_day
+
+    def close(self):
+        self.client = None
