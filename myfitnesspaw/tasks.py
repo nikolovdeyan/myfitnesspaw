@@ -7,7 +7,6 @@ from typing import Any, List, Sequence, Tuple, Union, cast
 import dropbox
 import jinja2
 import jsonpickle
-import myfitnesspal
 import prefect
 from dropbox.files import WriteMode
 from myfitnesspal.meal import Meal
@@ -16,7 +15,12 @@ from prefect.tasks.notifications.email_task import EmailTask
 from prefect.utilities.tasks import defaults_from_attrs
 
 from . import DB_PATH, TEMPLATES_DIR, sql
-from ._utils import MaterializedDay, select_fifo_backups_to_delete, try_parse_date_str
+from ._utils import (
+    MaterializedDay,
+    MyfitnesspalClientAdapter,
+    select_fifo_backups_to_delete,
+    try_parse_date_str,
+)
 
 
 class SQLiteExecuteMany(Task):
@@ -73,8 +77,10 @@ class SQLiteExecuteMany(Task):
         Returns:
             - None
         Raises:
-            - ValueError: if the query parameter is None or an empty string.
-            - DatabaseError: if exception occurs during the query execution.
+            - ValueError: if `query` is None or empty string.
+            - ValueError: if `db` is not provided at either initialization or runtime.
+            - ValueError: if `data` is not provided at either initialization or runtime.
+              Passing an empty list as `data` is allowed.
         """
         if not db:
             raise ValueError("A databse connection string must be provided.")
@@ -82,7 +88,7 @@ class SQLiteExecuteMany(Task):
         if not query:
             raise ValueError("A query string must be provided.")
 
-        if not data:
+        if data is None:  # allow empty lists to proceed,
             raise ValueError("A data list must be provided.")
 
         db = cast(str, db)
@@ -94,7 +100,7 @@ class SQLiteExecuteMany(Task):
             conn.commit()
 
 
-@task(name="Prepare Start and End Dates of Extraction Period")
+@task
 def prepare_extraction_start_end_dates(
     from_date_str: Union[str, None], to_date_str: Union[str, None]
 ) -> Tuple[datetime.date, datetime.date]:
@@ -138,7 +144,7 @@ def prepare_extraction_start_end_dates(
     return (from_date, to_date)
 
 
-@task(name="Prepare Sequence of Dates to Extract")
+@task
 def generate_dates_to_extract(
     from_date: datetime.date, to_date: datetime.date
 ) -> List[datetime.date]:
@@ -160,7 +166,7 @@ def generate_dates_to_extract(
     return [from_date + timedelta(days=i) for i in range(delta_days + 1)]
 
 
-@task(name="Create MFP Database Tables")
+@task
 def create_mfp_database() -> None:
     """
     Create the MyFitnessPaw project sqlite database tables.
@@ -188,75 +194,29 @@ def create_mfp_database() -> None:
         conn.commit()
 
 
-@task(
-    name="Get Day Record for Date <- (myfitnesspal)",
-    timeout=15,
-    max_retries=5,
-    retry_delay=timedelta(seconds=5),
-)
+@task(timeout=15, max_retries=5, retry_delay=timedelta(seconds=5))
 def get_myfitnesspal_day(
-    username: str, password: str, date: datetime.date
+    username: str, password: str, date: datetime.date, measures: List[str]
 ) -> MaterializedDay:
     """
-    Get the myfitnesspal data associated to a provided date.
+    Get the myfitnesspal data associated with the given date.
 
     Extracts the myfitnesspal data for the date which includes all food, exercise, notes,
-    and water, but does not include any measurements taken.
+    water, and also the measurements for the provided measures list for the given date.
 
     Args:
         - username (str): The username for the myfitnesspal account.
         - password (str): The password associated with the provided username.
+        - measures (List[str]): A list of measures to be collected.
     Returns:
         - MaterializedDay: Containing the extracted information.
     """
-    logger = prefect.context.get("logger")
-    client = myfitnesspal.Client(username=username, password=password)
-    logger.info(client)
-    myfitnesspal_day = client.get_date(date)
-    logger.info(myfitnesspal_day)
-    #  Materialize lazy loading properties:
-    day = MaterializedDay(
-        username=username,
-        date=date,
-        # TODO: meals=[meal for meal in myfitnesspal_day.meals if meal]
-        meals=myfitnesspal_day.meals,
-        exercises=myfitnesspal_day.exercises,
-        goals=myfitnesspal_day.goals,
-        notes=myfitnesspal_day.notes.as_dict(),
-        water=myfitnesspal_day.water,
-    )
-    logger.info(f"Returned day: {day}")
-    logger.info(f" - username: {day.username}")
-    logger.info(f" - date: {day.date}")
-    logger.info(f" - meals: {day.meals}")
+    with MyfitnesspalClientAdapter(username, password) as myfitnesspal:
+        day = myfitnesspal.get_myfitnesspaw_day(date, measures)
     return day
 
 
-@task(
-    name="Get Measure Records for Dates <- (myfitnesspal)",
-    timeout=15,
-    max_retries=5,
-    retry_delay=timedelta(seconds=5),
-)
-def get_myfitnesspal_measure(
-    measure: str,
-    username: str,
-    password: str,
-    dates_to_extract: List[datetime.date],
-) -> List[Tuple[str, datetime.date, str, float]]:
-    """Get the myfitnesspal measure records for a provided measure and time range."""
-    logger = prefect.context.get("logger")
-    from_date, to_date = min(dates_to_extract), max(dates_to_extract)
-    client = myfitnesspal.Client(username=username, password=password)
-    try:
-        records = client.get_measurements(measure, from_date, to_date)
-    except ValueError:
-        logger.warning(f"No measurement records found for '{measure}' measure!")
-        return []
-    return [(username, date, measure, value) for date, value in records.items()]
-
-
-@task(name="Serialize Day Records List")
+@task
 def serialize_myfitnesspal_days(
     myfitnesspal_days: Sequence,
 ) -> List[Tuple[str, datetime.date, str]]:
@@ -267,7 +227,7 @@ def serialize_myfitnesspal_days(
     return days_values
 
 
-@task(name="Filter New or Changed Day Records")
+@task
 def filter_new_or_changed_records(
     extracted_records: Sequence[str], local_records: Sequence[str]
 ) -> List[str]:
@@ -278,7 +238,7 @@ def filter_new_or_changed_records(
     return records_to_upsert
 
 
-@task(name="Deserialize Day Records to Process")
+@task
 def deserialize_records_to_process(
     serialized_days: Sequence[str],
 ) -> List[MaterializedDay]:
@@ -290,8 +250,8 @@ def deserialize_records_to_process(
     return result
 
 
-@task(name="Extract Notes from Day Sequence")
-def extract_notes_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+@task
+def extract_notes(days: Sequence[MaterializedDay]) -> List[Tuple]:
     """Extract myfitnesspal Food Notes values from a sequence of myfitnesspal days."""
     return [
         (
@@ -305,14 +265,14 @@ def extract_notes_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
     ]
 
 
-@task(name="Extract Water from Day Sequence")
-def extract_water_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+@task
+def extract_water(days: Sequence[MaterializedDay]) -> List[Tuple]:
     """Extract myfitnesspal water values from a sequence of myfitnesspal days."""
     return [(day.username, day.date, day.water) for day in days]
 
 
-@task(name="Extract Goals from Day Sequence")
-def extract_goals_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+@task
+def extract_goals(days: Sequence[MaterializedDay]) -> List[Tuple]:
     """Extract myfitnesspal daily goals from a sequence of myfitnesspal days."""
     return [
         (
@@ -329,8 +289,8 @@ def extract_goals_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
     ]
 
 
-@task(name="Extract Meals from Day Sequence")
-def extract_meals_from_days(days: Sequence[MaterializedDay]) -> List[Meal]:
+@task
+def extract_meals(days: Sequence[MaterializedDay]) -> List[Meal]:
     """Extract myfitnesspal Meal items from a sequence of myfitnesspal Days."""
     for day in days:
         for meal in day.meals:
@@ -341,8 +301,8 @@ def extract_meals_from_days(days: Sequence[MaterializedDay]) -> List[Meal]:
     return [meal for day in days for meal in day.meals if meal]
 
 
-@task(name="Extract Meal Records from Meal Sequence")
-def extract_meal_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
+@task
+def extract_meal_records(meals: Sequence[Meal]) -> List[Tuple]:
     """Extract meal entry records from a sequence of myfitnesspal meals."""
     return [
         (
@@ -360,8 +320,8 @@ def extract_meal_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
     ]
 
 
-@task(name="Extract MealEntry Records from Meal Sequence")
-def extract_mealentry_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
+@task
+def extract_mealentries(meals: Sequence[Meal]) -> List[Tuple]:
     """Extract meal entries records from a sequence of myfitnesspal meals."""
     return [
         (
@@ -383,8 +343,8 @@ def extract_mealentry_records_from_meals(meals: Sequence[Meal]) -> List[Tuple]:
     ]
 
 
-@task(name="Extract Cardio Exercises from Day Sequence")
-def extract_cardio_exercises_from_days(days: Sequence[MaterializedDay]) -> List[Tuple]:
+@task
+def extract_cardio_exercises(days: Sequence[MaterializedDay]) -> List[Tuple]:
     """Extract cardio exercise entries from a sequence of myfitnesspal days."""
     return [
         (
@@ -399,8 +359,8 @@ def extract_cardio_exercises_from_days(days: Sequence[MaterializedDay]) -> List[
     ]
 
 
-@task(name="Extract Strength Exercises from Days Sequence")
-def extract_strength_exercises_from_days(
+@task
+def extract_strength_exercises(
     days: Sequence[MaterializedDay],
 ) -> List[Tuple]:
     """Extract strength exercise entries from a sequence of myfitnesspal days."""
@@ -418,7 +378,22 @@ def extract_strength_exercises_from_days(
     ]
 
 
-@task(name="Get Raw Day Records for Dates <- (MyFitnessPaw)")
+@task
+def extract_measures(days: Sequence[MaterializedDay]) -> List[Tuple]:
+    """Extract measures values from a sequence of myfitnesspal days."""
+    return [
+        (
+            day.username,
+            day.date,
+            measure_name,
+            measure_value,
+        )
+        for day in days
+        for measure_name, measure_value in day.measurements.items()
+    ]
+
+
+@task
 def mfp_select_raw_days(
     username: str, dates: Sequence[datetime.date]
 ) -> List[Tuple[str, datetime.date, str]]:
@@ -433,87 +408,6 @@ def mfp_select_raw_days(
             day_record = (username, date, day_json)
             mfp_existing_days.append(day_record)
     return mfp_existing_days
-
-
-@task(name="Load Raw Day Records -> (MyFitnessPaw)")
-def mfp_insert_raw_days(days_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of day values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_or_replace_rawdaydata_record, days_values)
-        conn.commit()
-
-
-@task(name="Load Notes Records -> (MyFitnessPaw)")
-def mfp_insert_notes(notes_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of note values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_note_record, notes_values)
-        conn.commit()
-
-
-@task(name="Load Water Records -> (MyFitnessPaw)")
-def mfp_insert_water(water_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of water records values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_water_record, water_values)
-        conn.commit()
-
-
-@task(name="Load Goals Records -> (MyFitnessPaw)")
-def mfp_insert_goals(goals_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of goals records in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_goals_record, goals_values)
-        conn.commit()
-
-
-@task(name="Load Meal Records -> (MyFitnessPaw)")
-def mfp_insert_meals(meals_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of meal values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_meal_record, meals_values)
-        conn.commit()
-
-
-@task(name="Load MealEntry Records -> (MyFitnessPaw)")
-def mfp_insert_mealentries(mealentries_values: Sequence[Tuple]) -> None:
-    """Insert a sequence of meal entry values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_mealentry_record, mealentries_values)
-        conn.commit()
-
-
-@task(name="Load CardioExercises Records -> (MyFitnessPaw)")
-def mfp_insert_cardio_exercises(cardio_list: Sequence[Tuple]) -> None:
-    """Insert a sequence of cardio exercise entries in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_cardioexercises_command, cardio_list)
-        conn.commit()
-
-
-@task(name="Load StrengthExercises Records -> (MyFitnessPaw)")
-def mfp_insert_strength_exercises(strength_list: Sequence[Tuple]) -> None:
-    """Insert a sequence of strength exercise values in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_strengthexercises_command, strength_list)
-        conn.commit()
-
-
-@task(name="Load Measurement Records -> (MyFitnessPaw)")
-def mfp_insert_measurements(measurements: Sequence[Tuple]) -> None:
-    """Insert a sequence of measurements in the database."""
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.executemany(sql.insert_measurements_command, measurements)
-        conn.commit()
 
 
 @task
@@ -666,7 +560,7 @@ def save_email_report_locally(message: str) -> None:
         f.write(message)
 
 
-@task(name="Backup MFP Database to Dropbox")
+@task
 def make_dropbox_backup(
     dbx_token: str,
     dbx_mfp_dir: str,
@@ -681,7 +575,7 @@ def make_dropbox_backup(
     return res
 
 
-@task(name="List Available Files in Dropbox Backup Directory")
+@task
 def dbx_list_available_backups(
     dbx_token: str,
     dbx_mfp_dir: str,
@@ -692,7 +586,7 @@ def dbx_list_available_backups(
     return [f.name for f in res.entries]
 
 
-@task(name="Apply Backup Rotation Scheme")
+@task
 def apply_backup_rotation_scheme(
     dbx_token: str,
     dbx_mfp_dir: str,

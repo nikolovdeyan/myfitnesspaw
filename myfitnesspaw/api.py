@@ -7,22 +7,22 @@ from .schedules import BACKUP_DEFAULT, ETL_DEFAULT, WEEKLY_REPORT_DEFAULT
 
 def register_etl_flow(user=None, schedule=ETL_DEFAULT):
     """Register a MyFitnessPaw ETL Flow to the Prefect Cloud."""
-    pass
+    raise NotImplementedError("Under construction")
 
 
 def register_report_flow(user=None, type=None, schedule=WEEKLY_REPORT_DEFAULT):
     """Register a MyFitnessPaw Report Flow to the Prefect Cloud."""
-    pass
+    raise NotImplementedError("Under construction")
 
 
 def register_backup_flow(schedule=BACKUP_DEFAULT):
     """Register a MyFitnessPaw Backup Flow to the Prefect Cloud."""
-    pass
+    raise NotImplementedError("Under construction")
 
 
 def register_all_flows(schedules=[ETL_DEFAULT, BACKUP_DEFAULT, WEEKLY_REPORT_DEFAULT]):
     """Register all MyFitnessPaw Flows for all available users to the Prefect Cloud."""
-    pass
+    raise NotImplementedError("Under construction")
 
 
 def run_etl_flow(user=None, **kwargs):
@@ -45,9 +45,9 @@ def run_etl_flow(user=None, **kwargs):
 
 def run_report_flow(user=None, type=None):
     """Run a MyFitnessPaw Report Flow locally."""
-    pass
+    raise NotImplementedError("Under construction")
 
 
 def run_backup_flow():
     """Run a MyFitnessPaw Backup Flow locally."""
-    pass
+    raise NotImplementedError("Under construction")

@@ -3,17 +3,21 @@ This file contains the predefined Prefect Flows to use with MyFitnessPaw.
 """
 
 import prefect
-from prefect import Flow, flatten, mapped, unmapped
+from prefect import Flow, unmapped
 from prefect.core import Parameter
 from prefect.tasks.secrets import PrefectSecret
 
-from . import tasks
+from . import DB_PATH, sql, tasks
 
 
 def get_etl_flow(user=None, flow_name=None):
+
     if not user:
         raise ValueError("An user must be provided for the flow.")
+
+    mfp_insertmany = tasks.SQLiteExecuteMany(db=DB_PATH, enforce_fk=True)
     flow_name = flow_name if flow_name else f"MyFitnessPaw ETL <{user.upper()}>"
+
     with Flow(name=flow_name) as etl_flow:
         from_date, to_date = tasks.prepare_extraction_start_end_dates(
             from_date_str=Parameter(name="from_date", default=None),
@@ -28,6 +32,7 @@ def get_etl_flow(user=None, flow_name=None):
             date=dates_to_extract,
             username=unmapped(username),
             password=unmapped(password),
+            measures=unmapped(measures),
         )
         serialized_extracted_days = tasks.serialize_myfitnesspal_days(extracted_days)
         mfp_existing_days = tasks.mfp_select_raw_days(
@@ -39,47 +44,62 @@ def get_etl_flow(user=None, flow_name=None):
             extracted_records=serialized_extracted_days,
             local_records=mfp_existing_days,
         )
-        raw_days_load_state = tasks.mfp_insert_raw_days(serialized_days_to_process)
+        rawdays_load_state = mfp_insertmany(
+            query=sql.insert_or_replace_rawdaydata_record,
+            data=serialized_days_to_process,
+        )
+
         days_to_process = tasks.deserialize_records_to_process(
             serialized_days=serialized_days_to_process,
-            upstream_tasks=[raw_days_load_state],
+            upstream_tasks=[rawdays_load_state],
         )
-        notes_records = tasks.extract_notes_from_days(days_to_process)
-        notes_load_state = tasks.mfp_insert_notes(notes_records)  # NOQA
-        water_records = tasks.extract_water_from_days(days_to_process)
-        water_load_state = tasks.mfp_insert_water(water_records)  # NOQA
-        goals_records = tasks.extract_goals_from_days(days_to_process)
-        goals_load_state = tasks.mfp_insert_goals(goals_records)  # NOQA
-        meals_to_process = tasks.extract_meals_from_days(days_to_process)
-        meals_records = tasks.extract_meal_records_from_meals(meals_to_process)
-        mealentries_records = tasks.extract_mealentry_records_from_meals(
-            meals_to_process
+        note_records = tasks.extract_notes(days_to_process)
+        notes_load_state = mfp_insertmany(  # noqa
+            query=sql.insert_notes,
+            data=note_records,
         )
-        meals_load_state = tasks.mfp_insert_meals(meals_records)
-        mealentries_load_state = tasks.mfp_insert_mealentries(  # NOQA
-            mealentries_records, upstream_tasks=[meals_load_state]
+
+        water_records = tasks.extract_water(days_to_process)
+        water_load_state = mfp_insertmany(  # noqa
+            query=sql.insert_water,
+            data=water_records,
         )
-        cardio_exercises_to_process = tasks.extract_cardio_exercises_from_days(
-            days_to_process
+
+        goal_records = tasks.extract_goals(days_to_process)
+        goals_load_state = mfp_insertmany(  # noqa
+            query=sql.insert_goals,
+            data=goal_records,
         )
-        strength_exercises_to_process = tasks.extract_strength_exercises_from_days(
-            days_to_process
+        meals_to_process = tasks.extract_meals(days_to_process)
+        meal_records = tasks.extract_meal_records(meals_to_process)
+        meals_load_state = mfp_insertmany(
+            query=sql.insert_meals,
+            data=meal_records,
         )
-        cardio_exercises_load_state = tasks.mfp_insert_cardio_exercises(  # NOQA
-            cardio_list=cardio_exercises_to_process,
+
+        mealentry_records = tasks.extract_mealentries(meals_to_process)
+        mealentries_load_state = mfp_insertmany(  # noqa
+            query=sql.insert_mealentries,
+            data=mealentry_records,
+            upstream_tasks=[meals_load_state],
         )
-        strength_exercises_load_state = tasks.mfp_insert_strength_exercises(  # NOQA
-            strength_list=strength_exercises_to_process,
+
+        cardio_records = tasks.extract_cardio_exercises(days_to_process)
+        cardio_load_state = mfp_insertmany(  # noqa
+            query=sql.insert_cardioexercises,
+            data=cardio_records,
         )
-        measurements_records = tasks.get_myfitnesspal_measure(
-            measure=mapped(measures),
-            username=username,
-            password=password,
-            dates_to_extract=dates_to_extract,
+
+        strength_records = tasks.extract_strength_exercises(days_to_process)
+        strength_load_state = mfp_insertmany(  # noqa
+            query=sql.insert_strengthexercises,
+            data=strength_records,
         )
-        measurements_load_state = tasks.mfp_insert_measurements(  # NOQA
-            measurements=flatten(measurements_records),
-            upstream_tasks=[db_exists],
+
+        measurements_records = tasks.extract_measures(days_to_process)
+        measurements_load_state = mfp_insertmany(  # noqa
+            query=sql.insert_measurements,
+            data=measurements_records,
         )
     return etl_flow
 
@@ -105,8 +125,10 @@ def get_report_flow(user=None, report_type=None, flow_name=None):
 
 
 def get_backup_flow(flow_name=None):
+
     flow_name = flow_name if flow_name else "MyFitnessPaw DB Backup"
-    with Flow("MyFitnessPaw DB Backup") as backup_flow:
+
+    with Flow(flow_name) as backup_flow:
         dbx_mfp_dir = prefect.config.myfitnesspaw.backup.dbx_backup_dir
         dbx_token = PrefectSecret("MYFITNESSPAW_DROPBOX_ACCESS_TOKEN")
         backup_result = tasks.make_dropbox_backup(dbx_token, dbx_mfp_dir)  # noqa
