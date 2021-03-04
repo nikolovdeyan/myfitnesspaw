@@ -1,9 +1,6 @@
-import datetime
-
 import pytest
 
-import myfitnesspaw
-from myfitnesspaw._utils import MyfitnesspalClientAdapter
+from myfitnesspaw.tasks import MyfitnesspalClientAdapter
 
 
 class TestMyFitnesspalClientAdapter:

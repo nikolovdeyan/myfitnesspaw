@@ -103,9 +103,7 @@ class MyfitnesspalClientAdapter:
         for measure in measures:
             try:
                 response = self._client.get_measurements(measure, date, date)
-                measurement_value = response.get(date, None)
-                if measurement_value:
-                    measurements[measure] = measurement_value
+                measurements[measure] = response[date]
             except ValueError:
                 print(f"No measure records found for {measure} measure.")
         return measurements

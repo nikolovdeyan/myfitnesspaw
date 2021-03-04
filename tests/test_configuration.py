@@ -45,7 +45,3 @@ class TestMFPRepo:
         assert not secrets["MYFITNESSPAL_PASSWORD_USER"]
         assert not secrets["MYFITNESSPAW_SLACK_WEBHOOK_URL"]
         assert not secrets["MYFITNESSPAW_DROPBOX_ACCESS_TOKEN"]
-
-    def test_configuration_file_has_default_database_file_name(self):
-        mfp_config = toml.load(ROOT_DIR.joinpath(MFP_CONFIG_FILE))
-        assert mfp_config["myfitnesspaw"]["mfp_db_file"] == "mfp_db.sqlite"
