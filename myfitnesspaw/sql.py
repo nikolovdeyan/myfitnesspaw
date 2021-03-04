@@ -132,7 +132,11 @@ CREATE TABLE IF NOT EXISTS Measurements (
   date text NOT NULL,
   measure_name text NOT NULL,
   value REAL NOT NULL,
-  PRIMARY KEY(userid, date, measure_name)
+  PRIMARY KEY(userid, date, measure_name),
+  CONSTRAINT fk_rawdaydata
+    FOREIGN KEY(userid, date)
+    REFERENCES RawDayData(userid, date)
+    ON DELETE CASCADE
 );
 """
 

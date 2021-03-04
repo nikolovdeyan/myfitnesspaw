@@ -194,7 +194,7 @@ def create_mfp_database() -> None:
         conn.commit()
 
 
-@task(timeout=15, max_retries=5, retry_delay=timedelta(seconds=5))
+@task(timeout=15, max_retries=2, retry_delay=timedelta(seconds=5))
 def get_myfitnesspal_day(
     username: str, password: str, date: datetime.date, measures: List[str]
 ) -> MaterializedDay:
@@ -207,6 +207,7 @@ def get_myfitnesspal_day(
     Args:
         - username (str): The username for the myfitnesspal account.
         - password (str): The password associated with the provided username.
+        - date (datetime.date): The date to extract data for.
         - measures (List[str]): A list of measures to be collected.
     Returns:
         - MaterializedDay: Containing the extracted information.
