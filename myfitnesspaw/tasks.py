@@ -194,7 +194,7 @@ def create_mfp_database() -> None:
         conn.commit()
 
 
-@task(timeout=15, max_retries=1, retry_delay=timedelta(seconds=1))
+@task(timeout=15, max_retries=2, retry_delay=timedelta(seconds=5))
 def get_myfitnesspal_day(
     username: str, password: str, date: datetime.date, measures: List[str]
 ) -> MaterializedDay:
