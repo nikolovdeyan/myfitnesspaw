@@ -25,4 +25,11 @@ database_file = "mfp_db.sqlite"
 database_path = database_dir.joinpath(database_file)
 DB_PATH = str(database_path)
 
-from .api import run_etl_flow  # noqa
+from .api import (  # noqa
+    register_backup_flow,
+    register_etl_flow,
+    register_report_flow,
+    run_backup_flow,
+    run_etl_flow,
+    run_report_flow,
+)

@@ -1,3 +1,9 @@
+"""
+myfitnesspaw.tasks
+
+Contains all tasks used throughout the project's flows.
+"""
+
 import datetime
 import sqlite3
 from contextlib import closing
@@ -194,7 +200,7 @@ def create_mfp_database() -> None:
         conn.commit()
 
 
-@task(timeout=15, max_retries=2, retry_delay=timedelta(seconds=5))
+@task(timeout=15, max_retries=5, retry_delay=timedelta(seconds=15))
 def get_myfitnesspal_day(
     username: str, password: str, date: datetime.date, measures: List[str]
 ) -> MaterializedDay:

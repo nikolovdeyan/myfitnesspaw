@@ -1,5 +1,7 @@
 """
-This file contains the predefined Prefect Flows to use with MyFitnessPaw.
+myfitnesspaw.flows
+
+This module contains the predefined Prefect Flows to use with MyFitnessPaw.
 """
 
 import prefect
@@ -11,6 +13,9 @@ from . import DB_PATH, sql, tasks
 
 
 def get_etl_flow(user=None, flow_name=None):
+    """
+    Get an ETL flow to extract data from myfitnesspal into the local database.
+    """
 
     if not user:
         raise ValueError("An user must be provided for the flow.")
@@ -105,6 +110,9 @@ def get_etl_flow(user=None, flow_name=None):
 
 
 def get_report_flow(user=None, report_type=None, flow_name=None):
+    """
+    Get a report flow to send an email showing the user's progress.
+    """
     if not user:
         raise ValueError("An user must be provided for the flow.")
     flow_name = (
@@ -125,6 +133,9 @@ def get_report_flow(user=None, report_type=None, flow_name=None):
 
 
 def get_backup_flow(flow_name=None):
+    """
+    Get a backup flow to upload the MyFitnesPaw database to a dropbox location.
+    """
 
     flow_name = flow_name if flow_name else "MyFitnessPaw DB Backup"
 

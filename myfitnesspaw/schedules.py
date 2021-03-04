@@ -1,10 +1,13 @@
 """
+myfitnesspaw.schedules
+
 MyFitnessPaw's Prefect Schedules module.
 
 This module contains a set of predefined Prefect schedules to use with its workflows.
 Use this Cron calculator to understand and modify the CronSchedule definitions:
 https://crontab.guru/
 """
+
 from prefect.schedules import CronSchedule
 
 EVERY_DAY = CronSchedule("0 6 * * *")

@@ -1,4 +1,6 @@
 """
+myfitnesspaw._utils
+
 MyFitnessPaw Utilities Module.
 
 Contains helper functions for various tasks.
@@ -22,7 +24,9 @@ from . import MFP_CONFIG_PATH, PYTHONPATH, ROOT_DIR
 
 
 def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> State:
-    """State handler for Slack notifications in case of flow failure."""
+    """
+    State handler for Slack notifications in case of flow failure.
+    """
     logger = prefect.context.get("logger")
     slack_hook_url = PrefectSecret("MYFITNESSPAW_SLACK_WEBHOOK_URL")
     if new_state.is_failed():
@@ -35,7 +39,9 @@ def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> S
 
 
 def try_parse_date_str(date_str: str) -> datetime.datetime:
-    """Try to parse a date string using a set of provided formats."""
+    """
+    Try to parse a date string using a set of provided formats.
+    """
     available_formats = ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%Y")
     for fmt in available_formats:
         try:
@@ -48,7 +54,9 @@ def try_parse_date_str(date_str: str) -> datetime.datetime:
 def select_fifo_backups_to_delete(
     max_num_backups: int, files_list: Sequence
 ) -> List[str]:
-    """Return the oldest backups from a files_list to satisfy the max_num_backups."""
+    """
+    Return the oldest backups from a files_list to satisfy the max_num_backups.
+    """
     timestamps = [
         datetime.datetime.strptime(f.split("_")[3], "%Y-%m-%d") for f in files_list
     ]
@@ -60,7 +68,9 @@ def select_fifo_backups_to_delete(
 
 
 def get_local_run_config() -> LocalRun:
-    """Return a LocalRun configuration to attach to a flow."""
+    """
+    Return a LocalRun configuration to attach to a flow.
+    """
     return LocalRun(
         working_dir=ROOT_DIR,
         env={
@@ -72,7 +82,9 @@ def get_local_run_config() -> LocalRun:
 
 @dataclass
 class MaterializedDay:
-    """A class to hold the properties from myfitnesspal that we are working with."""
+    """
+    A class to hold the properties from myfitnesspal that we are working with.
+    """
 
     username: str
     date: datetime.date
@@ -85,6 +97,10 @@ class MaterializedDay:
 
 
 class MyfitnesspalClientAdapter:
+    """
+    An adapter class to handle the external myfitnesspal dependency.
+    """
+
     def __init__(self, username=None, password=None):
         if username is None or password is None:
             raise ValueError("Username and password arguments must be provided.")

@@ -1,4 +1,8 @@
-"""SQL code for the Myfitnesspaw flows."""
+"""
+myfitnesspaw.sql
+
+SQL code for the Myfitnesspaw flows.
+"""
 
 create_raw_day_table = """
 CREATE TABLE IF NOT EXISTS RawDayData (
