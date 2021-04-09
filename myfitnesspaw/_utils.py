@@ -132,7 +132,7 @@ class MyfitnesspalClientAdapter:
     def get_myfitnesspaw_day(self, date, measures):
         day = self._get_date(date)
         measurements = self._get_measurements(date, measures)
-        mfp_day = MaterializedDay(
+        return MaterializedDay(
             username=self._username,
             date=date,
             meals=day.meals,
@@ -142,7 +142,6 @@ class MyfitnesspalClientAdapter:
             water=day.water,
             measurements=measurements,
         )
-        return mfp_day
 
     def close(self):
-        self.client = None
+        self._client = None

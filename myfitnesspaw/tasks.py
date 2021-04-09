@@ -89,7 +89,7 @@ class SQLiteExecuteMany(Task):
               Passing an empty list as `data` is allowed.
         """
         if not db:
-            raise ValueError("A databse connection string must be provided.")
+            raise ValueError("A database connection string must be provided.")
 
         if not query:
             raise ValueError("A query string must be provided.")
@@ -100,7 +100,7 @@ class SQLiteExecuteMany(Task):
         db = cast(str, db)
         query = cast(str, query)
         with closing(sqlite3.connect(db)) as conn, closing(conn.cursor()) as cursor:
-            if enforce_fk is True:
+            if enforce_fk:
                 cursor.execute("PRAGMA foreign_keys = YES;")
             cursor.executemany(query, data)
             conn.commit()
@@ -147,7 +147,7 @@ def prepare_extraction_start_end_dates(
     else:
         to_date = try_parse_date_str(to_date_str).date()
 
-    return (from_date, to_date)
+    return from_date, to_date
 
 
 @task
@@ -228,10 +228,9 @@ def serialize_myfitnesspal_days(
     myfitnesspal_days: Sequence,
 ) -> List[Tuple[str, datetime.date, str]]:
     """Prepare a list of serialized Day records."""
-    days_values = [
+    return [
         (day.username, day.date, jsonpickle.encode(day)) for day in myfitnesspal_days
     ]
-    return days_values
 
 
 @task
@@ -433,7 +432,7 @@ def prepare_report_data_for_user(user, usermail: str) -> dict:
         )
         report_week = dict(c.fetchall())
 
-        mfp_report_data = {
+        return {
             "title": f"MyFitnessPaw Scheduled Report for {user}",
             "user": f"{user}",
             "today": datetime.datetime.now().strftime("%d %b %Y"),
@@ -525,17 +524,15 @@ def prepare_report_data_for_user(user, usermail: str) -> dict:
                 "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             },
         }
-        return mfp_report_data
 
 
 @task
 def prepare_report_style_for_user(user: str) -> dict:
     """Return a dictionary containing the values to style the experimental report."""
-    mfp_report_style = {
+    return {
         "title_bg_color": "#fec478",
         "article_bg_color": "#EDF2FF",
     }
-    return mfp_report_style
 
 
 @task
@@ -562,7 +559,7 @@ def send_email_report(email_addr: str, message: str) -> None:
 
 @task
 def save_email_report_locally(message: str) -> None:
-    "Temporary function to see the result of the render locally."
+    """Temporary function to see the result of the render locally."""
     with open("temp_report.html", "w") as f:
         f.write(message)
 

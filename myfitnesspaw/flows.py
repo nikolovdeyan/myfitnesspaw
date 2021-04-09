@@ -21,7 +21,7 @@ def get_etl_flow(user=None, flow_name=None):
         raise ValueError("An user must be provided for the flow.")
 
     mfp_insertmany = tasks.SQLiteExecuteMany(db=DB_PATH, enforce_fk=True)
-    flow_name = flow_name if flow_name else f"MyFitnessPaw ETL <{user.upper()}>"
+    flow_name = flow_name or f"MyFitnessPaw ETL <{user.upper()}>"
 
     with Flow(name=flow_name) as etl_flow:
         from_date, to_date = tasks.prepare_extraction_start_end_dates(
@@ -115,9 +115,7 @@ def get_report_flow(user=None, report_type=None, flow_name=None):
     """
     if not user:
         raise ValueError("An user must be provided for the flow.")
-    flow_name = (
-        flow_name if flow_name else f"MyFitnessPaw Email Report <{user.upper()}>"
-    )
+    flow_name = flow_name or f"MyFitnessPaw Email Report <{user.upper()}>"
     with Flow(name=flow_name) as report_flow:
         usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
         report_data = tasks.prepare_report_data_for_user(user, usermail)
@@ -134,10 +132,10 @@ def get_report_flow(user=None, report_type=None, flow_name=None):
 
 def get_backup_flow(flow_name=None):
     """
-    Get a backup flow to upload the MyFitnesPaw database to a dropbox location.
+    Get a backup flow to upload the MyFitnessPaw database to a dropbox location.
     """
 
-    flow_name = flow_name if flow_name else "MyFitnessPaw DB Backup"
+    flow_name = flow_name or "MyFitnessPaw DB Backup"
 
     with Flow(flow_name) as backup_flow:
         dbx_mfp_dir = prefect.config.myfitnesspaw.backup.dbx_backup_dir

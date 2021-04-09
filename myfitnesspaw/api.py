@@ -15,8 +15,7 @@ def register_etl_flow(
     """
     flow = flows.get_etl_flow(user=user, flow_name=flow_name)
     flow.run_config = _utils.get_local_run_config()
-    flow_id = flow.register(project_name=project_name)
-    return flow_id
+    return flow.register(project_name=project_name)
 
 
 def register_report_flow(
@@ -33,8 +32,7 @@ def register_report_flow(
         user=user, report_type=report_type, flow_name=flow_name
     )
     flow.run_config = _utils.get_local_run_config()
-    flow_id = flow.register(project_name=project_name)
-    return flow_id
+    return flow.register(project_name=project_name)
 
 
 def register_backup_flow(flow_name=None, project_name=None, schedule=BACKUP_DEFAULT):
@@ -43,8 +41,7 @@ def register_backup_flow(flow_name=None, project_name=None, schedule=BACKUP_DEFA
     """
     flow = flows.get_backup_flow(flow_name=flow_name)
     flow.run_config = _utils.get_local_run_config()
-    flow_id = flow.register(project_name=project_name)
-    return flow_id
+    return flow.register(project_name=project_name)
 
 
 def run_etl_flow(user=None, **kwargs):
@@ -61,8 +58,7 @@ def run_etl_flow(user=None, **kwargs):
     if kwargs.get("measures"):
         parameters["measures"] = kwargs.get("measures")
     flow.run_config = _utils.get_local_run_config()
-    state = flow.run(parameters=parameters)
-    return state
+    return flow.run(parameters=parameters)
 
 
 def run_report_flow(user=None, report_type=None):
@@ -71,8 +67,7 @@ def run_report_flow(user=None, report_type=None):
     """
     flow = flows.get_report_flow(user=user, report_type=report_type)
     flow.run_config = _utils.get_local_run_config()
-    state = flow.run()
-    return state
+    return flow.run()
 
 
 def run_backup_flow():
@@ -81,5 +76,4 @@ def run_backup_flow():
     """
     flow = flows.get_backup_flow()
     flow.run_config = _utils.get_local_run_config()
-    state = flow.run()
-    return state
+    return flow.run()
