@@ -13,17 +13,34 @@ For each of the flows MyFitnessPaw exposes a number of functons for convenient u
   - the `register` functions will register the flow against the Prefect Cloud account
     defined in the configuration.
 """
+from typing import Union
+
+import prefect
+
 from . import _utils, flows
 
 
-def register_all():
-    raise NotImplementedError("API call not implemented.")
-
-
-def run_etl_flow(user=None, **kwargs):
+def run_etl_flow(
+    user: str = None, **kwargs
+) -> Union["prefect.engine.state.State", None]:
     """
-    Create an ETL Flow for user and execute it locally.
+    Create an ETL flow for the provided user and execute it locally.
+
+    Args:
+       - user (str): The name of the user to have the flow executed for
+       - from_date (datetime.date, optional): The starting date (including) of the
+         extraction sequence
+       - to_date (datetime.date, optional): The ending date (incuding) of the extraction
+         sequence
+       - measures ([str], optional): A list of measures to be extracted
+
+    Returns:
+       - State: the state of the flow after the completed run.
+
+    Raises:
+       - ValueError: if the `user` keyword argument is not provided
     """
+
     flow = flows.get_etl_flow(user=user)
     # prepare parameters to pass at runtime
     parameters = {}
@@ -34,52 +51,128 @@ def run_etl_flow(user=None, **kwargs):
     if kwargs.get("measures"):
         parameters["measures"] = kwargs.get("measures")
     flow.run_config = _utils.get_local_run_config()
+
     return flow.run(parameters=parameters)
 
 
-def run_report_flow(user=None, report_type=None):
+def run_report_flow(
+    user: str = None, report_type: str = None
+) -> Union["prefect.engine.state.State", None]:
     """
-    Run a MyFitnessPaw Report Flow locally.
+    Create a report flow for the provided user and execute it locally.
+
+    Note: Currently only a weekly report is available for creation, so the parameter
+    `report_type` is not used.
+
+    Args:
+       - user (str): The name of the user to have the flow executed for
+       - report_type (str, optional): The type of report to be created
+
+    Returns:
+       - State: the state of the flow after the completed run.
+
+    Raises:
+       - ValueError: if the `user` keyword argument is not provided
     """
+
     flow = flows.get_report_flow(user=user, report_type=report_type)
     flow.run_config = _utils.get_local_run_config()
+
     return flow.run()
 
 
-def run_backup_flow():
+def run_backup_flow() -> Union["prefect.engine.state.State", None]:
     """
-    Run a MyFitnessPaw Backup Flow locally.
+    Create a backup flow and execute it locally.
+
+    Returns:
+       - State: the state of the flow after the completed run.
     """
     flow = flows.get_backup_flow()
     flow.run_config = _utils.get_local_run_config()
+
     return flow.run()
 
 
-def register_etl_flow(user=None, project_name=None, flow_name=None):
+def register_etl_flow(
+    user: str = None, project_name: str = None, flow_name: str = None
+) -> Union["prefect.engine.state.State", None]:
     """
-    Register a MyFitnessPaw ETL Flow to the Prefect Cloud.
+    Register a MyFitnessPaw ETL Flow to the Prefect Cloud for the provided user.
+
+    Args:
+       - user (str): The name of the user to have the flow registered for
+       - project_name (str, optional): The name of the Prefect Cloud project that
+         will be used to register the created flow. Note: The project must already
+         exist in Prefect Cloud or the process will fail.
+       - flow_name (str, optional): An optional name that will be used to register
+         the created flow. If not provided a default name is applied.
+
+    Returns:
+       - State: the state of the flow after the completed run.
+
+    Raises:
+       - ValueError: if the `user` keyword argument is not provided
+       - ValueError: if the `project_name` keyword argument is not provided
     """
+
     flow = flows.get_etl_flow(user=user, flow_name=flow_name)
     flow.run_config = _utils.get_local_run_config()
     return flow.register(project_name=project_name)
 
 
 def register_report_flow(
-    user=None, report_type=None, flow_name=None, project_name=None
-):
+    user: str = None,
+    project_name: str = None,
+    flow_name: str = None,
+    report_type: str = None,
+) -> Union["prefect.engine.state.State", None]:
     """
-    Register a MyFitnessPaw Report Flow to the Prefect Cloud.
+    Register a MyFitnessPaw report flow to the Prefect Cloud.
+
+    Args:
+       - user (str): The name of the user to have the flow registered for
+       - project_name (str, optional): The name of the Prefect Cloud project that
+         will be used to register the created flow. Note: The project must already
+         exist in Prefect Cloud or the process will fail.
+       - flow_name (str, optional): An optional name that will be used to register
+         the created flow. If not provided a default name is applied.
+       - report_type(str, optional): The type of report to register. Note: Currently
+         only the weekly report is available and this parameter is not used.
+
+    Returns:
+       - State: the state of the flow after the completed run.
+
+    Raises:
+       - ValueError: if the `user` keyword argument is not provided
+       - ValueError: if the `project_name` keyword argument is not provided
     """
     flow = flows.get_report_flow(
         user=user, report_type=report_type, flow_name=flow_name
     )
     flow.run_config = _utils.get_local_run_config()
+
     return flow.register(project_name=project_name)
 
 
-def register_backup_flow(flow_name=None, project_name=None):
+def register_backup_flow(
+    project_name: str = None, flow_name: str = None
+) -> Union["prefect.engine.state.State", None]:
     """
-    Schedule a MyFitnessPaw Backup Flow to the Prefect Cloud.
+    Register a MyFitnessPaw backup flow to the Prefect Cloud.
+
+    Args:
+       - project_name (str, optional): The name of the Prefect Cloud project that
+         will be used to register the created flow. Note: The project must already
+         exist in Prefect Cloud or the process will fail.
+       - flow_name (str, optional): An optional name that will be used to register
+         the created flow. If not provided a default name is applied.
+
+    Returns:
+       - State: the state of the flow after the completed run.
+
+    Raises:
+       - ValueError: if the `project_name` keyword argument is not provided
     """
     flow = flows.get_backup_flow(flow_name=flow_name)
     flow.run_config = _utils.get_local_run_config()

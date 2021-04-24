@@ -1,7 +1,7 @@
 """
 myfitnesspaw.tasks
 
-Contains all tasks used throughout the project's flows.
+Contains all tasks used in this project's flows.
 """
 
 import datetime
@@ -33,27 +33,38 @@ class SQLiteExecuteMany(Task):
     """
     Task for executing many queries against a SQLite file database.
 
+    This class mimics Prefect's implementation of `PostgresExecuteMany`, except:
+      - `commit` parameter is not implemented. Transaction is executed immediately.
+    TODO: Fix that.
+
     Args:
-      - db (str, optional): the location of the database file.
+      - db (str, optional): the location of the database file
       - query (str, optional): the optional _default_ query to execute at runtime;
         can also be provided as a keyword to `run`, which takes precedence over this
-        default.
-      - data (List[Tuple]): list of values to be used with the query.
+        default
+      - data ([Tuple]): list of values to be used with the query
       - enforce_fk (bool, optional): SQLite does not enforce foreign key constraints by
         default (see https://sqlite.org/foreignkeys.html). In order to enable foreign key
         support, an additional `PRAGMA foreign_keys = YES;` statement is executed before
         the main task statement. TODO: There is an additional case where the sqlite
         database has been compiled without FK support which is not yet handled by this
-        task.
+        task
       - **kwargs (optional): additional keyword arguments to pass to the standard
-        Task initialization.
+        Task initialization
+
+    Returns:
+      - None
+
+    Raises:
+      - ValueError: if query parameter is None or a blank string
+      - DatabaseError: if exception occurs when executing the query
     """
 
     def __init__(
         self,
         db: str = None,
         query: str = None,
-        data: List[tuple] = None,
+        data: List[Tuple] = None,
         enforce_fk: bool = None,
         **kwargs: Any,
     ):
@@ -73,29 +84,33 @@ class SQLiteExecuteMany(Task):
     ):
         """
         Task run method. Executes many queries against a SQLite file database.
+
         Args:
-            - db (str, optional):
-            - query (str, optional): query to execute against database.
-            - data (List[tuple], optional): list of values to use in the query.
-            - enforce_fk (bool, optional): SQLite does not enforce foreign
-              key constraints by default. To force the query to cascade delete
-              for example set the fk_constraint to True.
+          - db (str, optional):
+          - query (str, optional): query to execute against database.
+          - data (List[tuple], optional): list of values to use in the query.
+          - enforce_fk (bool, optional): SQLite does not enforce foreign
+            key constraints by default. To force the query to cascade delete
+            for example set the fk_constraint to True.
+
         Returns:
-            - None
+          - None
+
         Raises:
-            - ValueError: if `query` is None or empty string.
-            - ValueError: if `db` is not provided at either initialization or runtime.
-            - ValueError: if `data` is not provided at either initialization or runtime.
-              Passing an empty list as `data` is allowed.
+          - ValueError: if `query` is None or empty string.
+          - ValueError: if `db` is not provided at either initialization or runtime.
+          - ValueError: if `data` is not provided at either initialization or runtime.
+            Note: Passing an empty list as `data` is allowed.
         """
+
         if not db:
-            raise ValueError("A database connection string must be provided.")
+            raise ValueError("A database connection string must be provided")
 
         if not query:
-            raise ValueError("A query string must be provided.")
+            raise ValueError("A query string must be provided")
 
         if data is None:  # allow empty lists to proceed,
-            raise ValueError("A data list must be provided.")
+            raise ValueError("A data list must be provided")
 
         db = cast(str, db)
         query = cast(str, query)
@@ -115,17 +130,20 @@ def prepare_extraction_start_end_dates(
 
     With provided both from_date and to_date, the task returns the parsed dates that
     encompass the period to be extracted from myfitnesspal (including both the start and
-    end dates). If the arguments are not provided, the dates returned will specify the
-    default 5 day scan period (from 6 days ago to yesterday).
+    the end date. If the arguments are not provided, the dates returned will specify the
+    default 5 day extraction period (from 6 days ago to yesterday).
 
     Args:
-        - from_date_str (str): The date on which to start the extraction period.
-        - to_date_str (str): The date on which to end the extraction period.
+        - from_date_str (str): The date on which to start the extraction period
+        - to_date_str (str): The date on which to end the extraction period
+
     Returns:
         - Tuple[datetime.date, datetime.date]: The start and end dates of the extraction
-          period, parsed.
+          period, parsed
+
     Raises:
-        - ValueError: if only one of the dates is provided.
+        - ValueError: if only one of the dates is provided
+        - ValueError: if incorrect date format is provided
     """
     today = datetime.date.today()
     default_from_date = today - timedelta(days=6)
@@ -135,7 +153,7 @@ def prepare_extraction_start_end_dates(
         from_date_str is None and to_date_str is not None
     ):
         raise ValueError(
-            "Either both from_date and to_date should be provided or neither."
+            "Either both from_date and to_date should be provided or neither"
         )
 
     if from_date_str is None:
@@ -158,28 +176,34 @@ def generate_dates_to_extract(
     Return a list of dates between from_date and to_date to be extracted.
 
     Args:
-        - from_date (datetime.date): The starting date to generate from.
-        - to_date (datetime.date): The ending date to generate to.
+        - from_date (datetime.date): The starting date of the extraction period
+        - to_date (datetime.date): The ending date of the extraction period
+
     Returns:
-        - List[datetime.date]: A list of dates to be extracted from myfitnesspal.
+        - List[datetime.date]: A list of dates to have data extracted for from myfitnesspal
+
     Raises:
-        - ValueError: if to_date is before from_date.
+        - ValueError: if to_date is before from_date
     """
+
     if from_date > to_date:
-        raise ValueError("Parameter to_date cannot be before from_date.")
+        raise ValueError("Parameter to_date cannot be before from_date")
+
     delta_days = (to_date - from_date).days
-    #  including both the starting and ending date
+
+    #  including both the starting and ending dates:
     return [from_date + timedelta(days=i) for i in range(delta_days + 1)]
 
 
 @task
 def create_mfp_database() -> None:
     """
-    Create the MyFitnessPaw project sqlite database tables.
+    Create the MyFitnessPaw project sqlite database schema.
 
     This task executes a series of commands to build the project database tables.
-    All commands include the CREATE TABLE IF NOT EXISTS clause, making this function
-    safe to run against an already existing database, thus making the task idempotent.
+    All tables are created using the CREATE TABLE IF NOT EXISTS clause, making this
+    function safe to run against an already existing database, thus making the
+    task idempotent.
 
     Returns:
         - None
@@ -207,27 +231,38 @@ def get_myfitnesspal_day(
     """
     Get the myfitnesspal data associated with the given date.
 
-    Extracts the myfitnesspal data for the date which includes all food, exercise, notes,
+    Extracts the myfitnesspal data for a date, which includes all food, exercise, notes,
     water, and also the measurements for the provided measures list for the given date.
 
     Args:
-        - username (str): The username for the myfitnesspal account.
-        - password (str): The password associated with the provided username.
-        - date (datetime.date): The date to extract data for.
-        - measures (List[str]): A list of measures to be collected.
+      - username (str): The username for the myfitnesspal account
+      - password (str): The password associated with the provided username
+      - date (datetime.date): The date to extract data for
+      - measures (List[str]): A list of measures to be collected
+
     Returns:
-        - MaterializedDay: Containing the extracted information.
+      - MaterializedDay: Containing the extracted information
     """
+
     with MyfitnesspalClientAdapter(username, password) as myfitnesspal:
         day = myfitnesspal.get_myfitnesspaw_day(date, measures)
+
     return day
 
 
 @task
 def serialize_myfitnesspal_days(
-    myfitnesspal_days: Sequence,
+    myfitnesspal_days: List[MaterializedDay],
 ) -> List[Tuple[str, datetime.date, str]]:
-    """Prepare a list of serialized Day records."""
+    """
+    Prepare a list of serialized day records.
+
+    Args:
+      - myfitnesspal_days (List[MaterializedDay]): A list of day objects to be serialized
+
+    Returns:
+      - List[Tuple[str, datetime.date, str]]: A list of serialized day objects
+    """
     return [
         (day.username, day.date, jsonpickle.encode(day)) for day in myfitnesspal_days
     ]
@@ -235,30 +270,64 @@ def serialize_myfitnesspal_days(
 
 @task
 def filter_new_or_changed_records(
-    extracted_records: Sequence[str], local_records: Sequence[str]
+    extracted_records: List[str], local_records: List[str]
 ) -> List[str]:
-    """Filter out extracted records that are locally available already."""
+    """
+    Filter out extracted records that are available and unchanged.
+
+    Any information that had been changed in myfitnesspal will produce a mismatch when
+    compared against the available copy. All other records that are locally available
+    are discarded from the list.
+
+    Args:
+      - extracted_records (List[str]): The list with the newly extracted records
+      - local_records (List[str]): The list with the locally available records
+
+    Returns:
+      - List[str]: A list with new or changed day objects
+    """
     logger = prefect.context.get("logger")
     records_to_upsert = [t for t in extracted_records if t not in local_records]
     logger.info(f"Records to Insert/Update: {len(records_to_upsert)}")
+
     return records_to_upsert
 
 
 @task
 def deserialize_records_to_process(
-    serialized_days: Sequence[str],
+    serialized_days: List[str],
 ) -> List[MaterializedDay]:
-    """Deserialize a sequence of days."""
+    """
+    Deserialize a sequence of days.
+
+    Args:
+      - serialized_days (List[str]): A list containing the serialized days to be
+        converted back to `MaterializedDay` objects
+
+    Returns:
+      - List[MaterializedDay]: A list with deserialized day objects
+    """
+
     result = []
     for day_json in serialized_days:
         day_decoded = jsonpickle.decode(day_json[2], classes=[MaterializedDay])
         result.append(day_decoded)
+
     return result
 
 
 @task
-def extract_notes(days: Sequence[MaterializedDay]) -> List[Tuple]:
-    """Extract myfitnesspal Food Notes values from a sequence of myfitnesspal days."""
+def extract_notes(days: List[MaterializedDay]) -> List[Tuple]:
+    """
+    Extract myfitnesspal food note values from a list of myfitnesspal days.
+
+    Args:
+      - days (List[MaterializedDay]): A list containing the days to extract data from
+
+    Returns:
+      - List[Tuple]: A list with notes' values
+    """
+
     return [
         (
             day.username,
@@ -272,14 +341,32 @@ def extract_notes(days: Sequence[MaterializedDay]) -> List[Tuple]:
 
 
 @task
-def extract_water(days: Sequence[MaterializedDay]) -> List[Tuple]:
-    """Extract myfitnesspal water values from a sequence of myfitnesspal days."""
+def extract_water(days: List[MaterializedDay]) -> List[Tuple]:
+    """
+    Extract myfitnesspal water values from a list of myfitnesspal days.
+
+    Args:
+      - days (List[MaterializedDay]): A list containing the days to extract data from
+
+    Returns:
+      - List[Tuple]: A list with water record values
+    """
+
     return [(day.username, day.date, day.water) for day in days]
 
 
 @task
-def extract_goals(days: Sequence[MaterializedDay]) -> List[Tuple]:
-    """Extract myfitnesspal daily goals from a sequence of myfitnesspal days."""
+def extract_goals(days: List[MaterializedDay]) -> List[Tuple]:
+    """
+    Extract myfitnesspal daily goals from a sequence of myfitnesspal days.
+
+    Args:
+      - days (List[MaterializedDay]): A list containing the days to extract data from
+
+    Returns:
+      - List[Tuple]: A list with goal record values
+    """
+
     return [
         (
             day.username,
@@ -296,20 +383,39 @@ def extract_goals(days: Sequence[MaterializedDay]) -> List[Tuple]:
 
 
 @task
-def extract_meals(days: Sequence[MaterializedDay]) -> List[Meal]:
-    """Extract myfitnesspal Meal items from a sequence of myfitnesspal Days."""
+def extract_meals(days: List[MaterializedDay]) -> List[Meal]:
+    """
+    Extract myfitnesspal neal items from a sequence of myfitnesspal days.
+
+    Args:
+      - days (List[MaterializedDay]): A list containing the days to extract data from
+
+    Returns:
+      - List[Meal]: A list with meal record values
+    """
+
     for day in days:
         for meal in day.meals:
             if not meal:  # TODO: ?
                 continue
             meal.username = day.username
             meal.date = day.date
+
     return [meal for day in days for meal in day.meals if meal]
 
 
 @task
-def extract_meal_records(meals: Sequence[Meal]) -> List[Tuple]:
-    """Extract meal entry records from a sequence of myfitnesspal meals."""
+def extract_meal_records(meals: List[Meal]) -> List[Tuple]:
+    """
+    Extract meal entry records from a sequence of myfitnesspal meals.
+
+    Args:
+      - meals (List[Meal]): A list with meal objects to extract data from
+
+    Returns:
+      - List[Tuple]: A list with meal record values
+    """
+
     return [
         (
             meal.username,
@@ -327,8 +433,17 @@ def extract_meal_records(meals: Sequence[Meal]) -> List[Tuple]:
 
 
 @task
-def extract_mealentries(meals: Sequence[Meal]) -> List[Tuple]:
-    """Extract meal entries records from a sequence of myfitnesspal meals."""
+def extract_mealentries(meals: List[Meal]) -> List[Tuple]:
+    """
+    Extract meal entries records from a sequence of myfitnesspal meals.
+
+    Args:
+      - meals (List[Meal]): A list with meal objects to extract data from
+
+    Returns:
+      - List[Tuple]: A list with meal record values
+    """
+
     return [
         (
             meal.username,
@@ -350,8 +465,17 @@ def extract_mealentries(meals: Sequence[Meal]) -> List[Tuple]:
 
 
 @task
-def extract_cardio_exercises(days: Sequence[MaterializedDay]) -> List[Tuple]:
-    """Extract cardio exercise entries from a sequence of myfitnesspal days."""
+def extract_cardio_exercises(days: List[MaterializedDay]) -> List[Tuple]:
+    """
+    Extract cardio exercise entries from a sequence of myfitnesspal days.
+
+    Args:
+      - days (List[MaterializedDay]): A list containing the days to extract data from
+
+    Returns:
+      - List[Tuple]: A list with cardio exercise record values
+    """
+
     return [
         (
             day.username,
@@ -367,9 +491,18 @@ def extract_cardio_exercises(days: Sequence[MaterializedDay]) -> List[Tuple]:
 
 @task
 def extract_strength_exercises(
-    days: Sequence[MaterializedDay],
+    days: List[MaterializedDay],
 ) -> List[Tuple]:
-    """Extract strength exercise entries from a sequence of myfitnesspal days."""
+    """
+    Extract strength exercise entries from a sequence of myfitnesspal days.
+
+    Args:
+      - days (List[MaterializedDay]): A list containing the days to extract data from
+
+    Returns:
+      - List[Tuple]: A list with strength exercise record values
+    """
+
     return [
         (
             day.username,
@@ -385,8 +518,17 @@ def extract_strength_exercises(
 
 
 @task
-def extract_measures(days: Sequence[MaterializedDay]) -> List[Tuple]:
-    """Extract measures values from a sequence of myfitnesspal days."""
+def extract_measures(days: List[MaterializedDay]) -> List[Tuple]:
+    """
+    Extract measures values from a sequence of myfitnesspal days.
+
+    Args:
+      - days (List[MaterializedDay]): A list containing the days to extract data from
+
+    Returns:
+      - List[Tuple]: A list with the extracted values
+    """
+
     return [
         (
             day.username,
@@ -401,9 +543,19 @@ def extract_measures(days: Sequence[MaterializedDay]) -> List[Tuple]:
 
 @task
 def mfp_select_raw_days(
-    username: str, dates: Sequence[datetime.date]
+    username: str, dates: List[datetime.date]
 ) -> List[Tuple[str, datetime.date, str]]:
-    """Select raw day entries for username and provided dates."""
+    """
+    Select raw day entries for username and provided dates.
+
+    Args:
+      - username (str): The username to select
+      - dates (List[datetime.date]): A list with dates to select
+
+    Returns:
+      - List[Tuple]: A list containing the serialized days selected
+    """
+
     mfp_existing_days = []
     with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
@@ -417,8 +569,12 @@ def mfp_select_raw_days(
 
 
 @task
-def prepare_report_data_for_user(user, usermail: str) -> dict:
-    """Return a dictionary containing the data to populate the experimental report."""
+def prepare_report_data_for_user(user: str, usermail: str) -> dict:
+    """
+    Return a dictionary containing the data to populate the experimental report.
+
+    This is a temporary task. TODO: Build in a more manageable way.
+    """
     with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
         c.execute(sql.select_alpha_report_totals, (usermail,))
