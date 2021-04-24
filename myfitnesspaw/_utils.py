@@ -1,14 +1,14 @@
 """
 myfitnesspaw._utils
 
-MyFitnessPaw Utilities Module.
+MyFitnessPaw utilities Module.
 
 Contains helper functions for various tasks.
 """
 
 import datetime
 from dataclasses import dataclass
-from typing import Dict, List, Sequence
+from typing import Dict, List
 
 import myfitnesspal
 import prefect
@@ -26,23 +26,45 @@ from . import MFP_CONFIG_PATH, PYTHONPATH, ROOT_DIR
 def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> State:
     """
     State handler for Slack notifications in case of flow failure.
+
+    Args:
+       - flow (Flow): The flow to be observed for failure state
+       - old_state (State):
+       - new_state (State):
+
+    Returns:
+       - State: The new flow state to be returned after notification is sent
     """
+
     logger = prefect.context.get("logger")
     slack_hook_url = PrefectSecret("MYFITNESSPAW_SLACK_WEBHOOK_URL")
     if new_state.is_failed():
         if not slack_hook_url.run():
-            logger.info("No Slack hook url provided, skipping notification...")
+            logger.warning("No Slack hook url provided, skipping notification...")
             return new_state
-        msg = f"MyFitnessPaw ETL flow has failed: {new_state}!"
+
+        msg = f"A MyFitnessPaw flow has failed: {new_state}!"
         requests.post(slack_hook_url.run(), json={"text": msg})
+
     return new_state
 
 
 def try_parse_date_str(date_str: str) -> datetime.datetime:
     """
     Try to parse a date string using a set of provided formats.
+
+    Args:
+       - date_str (str): A string to be parsed as a date using the available formats
+
+    Returns:
+       - datetime.datetime(): The parsed date
+
+    Raises:
+       - ValueError: If the provided string can't be parsed using the available formats
     """
+
     available_formats = ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%Y")
+
     for fmt in available_formats:
         try:
             return datetime.datetime.strptime(date_str, fmt)
@@ -51,12 +73,18 @@ def try_parse_date_str(date_str: str) -> datetime.datetime:
     raise ValueError(f"No available format found to parse <{date_str}>.")
 
 
-def select_fifo_backups_to_delete(
-    max_num_backups: int, files_list: Sequence
-) -> List[str]:
+def select_fifo_backups_to_delete(max_num_backups: int, files_list: List) -> List[str]:
     """
     Return the oldest backups from a files_list to satisfy the max_num_backups.
+
+    Args:
+       - max_num_backups (int): The maximum number of backup files to keep on the server
+       - files_list (List): The list of available backup files on the server
+
+    Returns:
+       - List: The list with the oldest files on the server due to be deleted
     """
+
     timestamps = [
         datetime.datetime.strptime(f.split("_")[3], "%Y-%m-%d") for f in files_list
     ]
@@ -70,6 +98,9 @@ def select_fifo_backups_to_delete(
 def get_local_run_config() -> LocalRun:
     """
     Return a LocalRun configuration to attach to a flow.
+
+    Returns:
+       - prefect.run_configs.LocalRun: The local run configuration to be applied to a flow
     """
     return LocalRun(
         working_dir=ROOT_DIR,

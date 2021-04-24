@@ -12,15 +12,26 @@ from prefect.tasks.secrets import PrefectSecret
 from . import DB_PATH, sql, tasks
 
 
-def get_etl_flow(user=None, flow_name=None):
+def get_etl_flow(user: str = None, flow_name: str = None):
     """
-    Get an ETL flow to extract data from myfitnesspal into the local database.
+    Create an ETL flow to extract data from myfitnesspal into the local database.
+
+    Args:
+       - user (str): MyFitnessPaw username associated with the created workflow
+       - flow_name (str, optional): An optional name to be applied to the flow
+
+    Returns:
+       - prefect.Flow: The created Prefect flow ready to be run
+
+    Raises:
+       - ValueError: if the `user` keyword argument is not provided
     """
 
     if not user:
         raise ValueError("An user must be provided for the flow.")
 
     mfp_insertmany = tasks.SQLiteExecuteMany(db=DB_PATH, enforce_fk=True)
+    # TODO: extract default flow name to settings
     flow_name = flow_name or f"MyFitnessPaw ETL <{user.upper()}>"
 
     with Flow(name=flow_name) as etl_flow:
@@ -106,15 +117,32 @@ def get_etl_flow(user=None, flow_name=None):
             query=sql.insert_measurements,
             data=measurements_records,
         )
+
     return etl_flow
 
 
-def get_report_flow(user=None, report_type=None, flow_name=None):
+def get_report_flow(user: str = None, report_type: str = None, flow_name: str = None):
     """
-    Get a report flow to send an email showing the user's progress.
+    Create a flow that sends the user a report email.
+
+    Note: The `report_type` argument is currently not used and only the experimental weekly
+    report is available for dispatch.
+
+    Args:
+       - user (str): MyFitnessPaw username associated with the created workflow
+       - report_type (str, optional): The type of report that will be dispached by the flow
+       - flow_name (str, optional): An optional name to be applied to the flow
+
+    Returns:
+       - prefect.Flow: The created Prefect flow ready to be run
+
+    Raises:
+       - ValueError: if the `user` keyword argument is not provided
     """
+
     if not user:
         raise ValueError("An user must be provided for the flow.")
+
     flow_name = flow_name or f"MyFitnessPaw Email Report <{user.upper()}>"
     with Flow(name=flow_name) as report_flow:
         usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
@@ -127,12 +155,19 @@ def get_report_flow(user=None, report_type=None, flow_name=None):
         )
         t = tasks.save_email_report_locally(report_message)  # noqa
         r = tasks.send_email_report(usermail, report_message)  # noqa
+
     return report_flow
 
 
-def get_backup_flow(flow_name=None):
+def get_backup_flow(flow_name: str = None):
     """
     Get a backup flow to upload the MyFitnessPaw database to a dropbox location.
+
+    Args:
+       - flow_name (str, optional): An optional name to be applied to the flow
+
+    Returns:
+       - prefect.Flow: The created Prefect flow ready to be run
     """
 
     flow_name = flow_name or "MyFitnessPaw DB Backup"
@@ -145,4 +180,5 @@ def get_backup_flow(flow_name=None):
         res = tasks.apply_backup_rotation_scheme(  # noqa
             dbx_token, dbx_mfp_dir, avail_backups
         )
+
     return backup_flow

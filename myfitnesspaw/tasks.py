@@ -86,21 +86,21 @@ class SQLiteExecuteMany(Task):
         Task run method. Executes many queries against a SQLite file database.
 
         Args:
-          - db (str, optional):
-          - query (str, optional): query to execute against database.
-          - data (List[tuple], optional): list of values to use in the query.
-          - enforce_fk (bool, optional): SQLite does not enforce foreign
-            key constraints by default. To force the query to cascade delete
-            for example set the fk_constraint to True.
+           - db (str, optional):
+           - query (str, optional): query to execute against database.
+           - data (List[tuple], optional): list of values to use in the query
+           - enforce_fk (bool, optional): SQLite does not enforce foreign
+             key constraints by default. To force the query to cascade delete
+             for example set the fk_constraint to True
 
         Returns:
-          - None
+           - None
 
         Raises:
-          - ValueError: if `query` is None or empty string.
-          - ValueError: if `db` is not provided at either initialization or runtime.
-          - ValueError: if `data` is not provided at either initialization or runtime.
-            Note: Passing an empty list as `data` is allowed.
+           - ValueError: if `query` is None or empty string
+           - ValueError: if `db` is not provided at either initialization or runtime
+           - ValueError: if `data` is not provided at either initialization or runtime
+             Note: Passing an empty list as `data` is allowed.
         """
 
         if not db:
@@ -134,16 +134,16 @@ def prepare_extraction_start_end_dates(
     default 5 day extraction period (from 6 days ago to yesterday).
 
     Args:
-        - from_date_str (str): The date on which to start the extraction period
-        - to_date_str (str): The date on which to end the extraction period
+       - from_date_str (str): The date on which to start the extraction period
+       - to_date_str (str): The date on which to end the extraction period
 
     Returns:
-        - Tuple[datetime.date, datetime.date]: The start and end dates of the extraction
-          period, parsed
+       - Tuple[datetime.date, datetime.date]: The start and end dates of the extraction
+         period, parsed
 
     Raises:
-        - ValueError: if only one of the dates is provided
-        - ValueError: if incorrect date format is provided
+       - ValueError: if only one of the dates is provided
+       - ValueError: if incorrect date format is provided
     """
     today = datetime.date.today()
     default_from_date = today - timedelta(days=6)
@@ -235,13 +235,13 @@ def get_myfitnesspal_day(
     water, and also the measurements for the provided measures list for the given date.
 
     Args:
-      - username (str): The username for the myfitnesspal account
-      - password (str): The password associated with the provided username
-      - date (datetime.date): The date to extract data for
-      - measures (List[str]): A list of measures to be collected
+       - username (str): The username for the myfitnesspal account
+       - password (str): The password associated with the provided username
+       - date (datetime.date): The date to extract data for
+       - measures (List[str]): A list of measures to be collected
 
     Returns:
-      - MaterializedDay: Containing the extracted information
+       - MaterializedDay: Containing the extracted information
     """
 
     with MyfitnesspalClientAdapter(username, password) as myfitnesspal:
