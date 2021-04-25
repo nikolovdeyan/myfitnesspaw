@@ -28,7 +28,7 @@ def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> S
     State handler for Slack notifications in case of flow failure.
 
     Args:
-       - flow (Flow): The flow to be observed for failure state
+       - flow (Flow): The flow to be observed for failure
        - old_state (State):
        - new_state (State):
 
@@ -43,7 +43,7 @@ def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> S
             logger.warning("No Slack hook url provided, skipping notification...")
             return new_state
 
-        msg = f"A MyFitnessPaw flow has failed: {new_state}!"
+        msg = f"A MyFitnessPaw flow has failed: {flow.name}!"
         requests.post(slack_hook_url.run(), json={"text": msg})
 
     return new_state

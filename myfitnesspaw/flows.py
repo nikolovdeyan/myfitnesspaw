@@ -9,7 +9,7 @@ from prefect import Flow, unmapped
 from prefect.core import Parameter
 from prefect.tasks.secrets import PrefectSecret
 
-from . import DB_PATH, sql, tasks
+from . import DB_PATH, _utils, sql, tasks
 
 
 def get_etl_flow(user: str = None, flow_name: str = None):
@@ -33,8 +33,9 @@ def get_etl_flow(user: str = None, flow_name: str = None):
     mfp_insertmany = tasks.SQLiteExecuteMany(db=DB_PATH, enforce_fk=True)
     # TODO: extract default flow name to settings
     flow_name = flow_name or f"MyFitnessPaw ETL <{user.upper()}>"
-
-    with Flow(name=flow_name) as etl_flow:
+    with Flow(
+        name=flow_name, state_handlers=[_utils.slack_notify_on_failure]
+    ) as etl_flow:
         from_date, to_date = tasks.prepare_extraction_start_end_dates(
             from_date_str=Parameter(name="from_date", default=None),
             to_date_str=Parameter(name="to_date", default=None),
@@ -144,17 +145,19 @@ def get_report_flow(user: str = None, report_type: str = None, flow_name: str = 
         raise ValueError("An user must be provided for the flow.")
 
     flow_name = flow_name or f"MyFitnessPaw Email Report <{user.upper()}>"
-    with Flow(name=flow_name) as report_flow:
+    with Flow(
+        name=flow_name, state_handlers=[_utils.slack_notify_on_failure]
+    ) as report_flow:
         usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
         report_data = tasks.prepare_report_data_for_user(user, usermail)
         report_style = tasks.prepare_report_style_for_user(user)
-        report_message = tasks.render_html_email_report(
+        report_html = tasks.render_html_email_report(
             template_name="mfp_base.jinja2",
             report_data=report_data,
             report_style=report_style,
         )
-        t = tasks.save_email_report_locally(report_message)  # noqa
-        r = tasks.send_email_report(usermail, report_message)  # noqa
+        t = tasks.save_email_report_locally(report_html)  # noqa
+        # r = tasks.send_email_report(usermail, report_html)  # noqa
 
     return report_flow
 
@@ -172,7 +175,9 @@ def get_backup_flow(flow_name: str = None):
 
     flow_name = flow_name or "MyFitnessPaw DB Backup"
 
-    with Flow(flow_name) as backup_flow:
+    with Flow(
+        flow_name, state_handlers=[_utils.slack_notify_on_failure]
+    ) as backup_flow:
         dbx_mfp_dir = prefect.config.myfitnesspaw.backup.dbx_backup_dir
         dbx_token = PrefectSecret("MYFITNESSPAW_DROPBOX_ACCESS_TOKEN")
         backup_result = tasks.make_dropbox_backup(dbx_token, dbx_mfp_dir)  # noqa

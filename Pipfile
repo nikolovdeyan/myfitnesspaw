@@ -13,17 +13,18 @@ jinja2 = "*"
 [dev-packages]
 isort = "*"
 black = "*"
-flake8 = "*"
 pre-commit = "*"
 mypy = "*"
-prefect = {extras = ["viz"], version = "*"}
+prefect = {extras = ["vis"], version = "*"}
 pytest = "*"
-python-language-server = {extras = ["all"], version = "*"}
 pyls-isort = "*"
 pyls-mypy = "*"
 pyls-black = "*"
 autoflake = "*"
 pytest-mock = "*"
+python-language-server = "*"
+pytest-cov = "*"
+flake8 = "*"
 
 [requires]
 python_version = "3.9"

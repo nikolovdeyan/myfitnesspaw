@@ -8,7 +8,7 @@ import datetime
 import sqlite3
 from contextlib import closing
 from datetime import timedelta
-from typing import Any, List, Sequence, Tuple, Union, cast
+from typing import Any, List, Tuple, Union, cast
 
 import dropbox
 import jinja2
@@ -570,6 +570,7 @@ def mfp_select_raw_days(
 
 @task
 def prepare_report_data_for_user(user: str, usermail: str) -> dict:
+    # modify: -> mfp_select_weekly_report_data(user: str, usermail: str)
     """
     Return a dictionary containing the data to populate the experimental report.
 
@@ -750,7 +751,7 @@ def dbx_list_available_backups(
 def apply_backup_rotation_scheme(
     dbx_token: str,
     dbx_mfp_dir: str,
-    files_list: Sequence,
+    files_list: List,
 ) -> List[Tuple[Any, Any]]:
     """Apply the current backup rotation scheme (FIFO) to a provided file list."""
     #  hardcoding it to keep only the most recent 5 for now in order to see how it works.
