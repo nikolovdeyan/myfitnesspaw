@@ -12,7 +12,10 @@ from prefect.tasks.secrets import PrefectSecret
 from . import DB_PATH, _utils, sql, tasks
 
 
-def get_etl_flow(user: str = None, flow_name: str = None):
+def get_etl_flow(
+    user: str = None,
+    flow_name: str = None,
+) -> Flow:
     """
     Create an ETL flow to extract data from myfitnesspal into the local database.
 
@@ -31,10 +34,11 @@ def get_etl_flow(user: str = None, flow_name: str = None):
         raise ValueError("An user must be provided for the flow.")
 
     mfp_insertmany = tasks.SQLiteExecuteMany(db=DB_PATH, enforce_fk=True)
-    # TODO: extract default flow name to settings
     flow_name = flow_name or f"MyFitnessPaw ETL <{user.upper()}>"
     with Flow(
-        name=flow_name, state_handlers=[_utils.slack_notify_on_failure]
+        name=flow_name,
+        state_handlers=[_utils.slack_fail_notification],
+        terminal_state_handler=_utils.custom_terminal_state_handler,
     ) as etl_flow:
         from_date, to_date = tasks.prepare_extraction_start_end_dates(
             from_date_str=Parameter(name="from_date", default=None),
@@ -122,7 +126,11 @@ def get_etl_flow(user: str = None, flow_name: str = None):
     return etl_flow
 
 
-def get_report_flow(user: str = None, report_type: str = None, flow_name: str = None):
+def get_report_flow(
+    user: str = None,
+    report_type: str = None,
+    flow_name: str = None,
+) -> Flow:
     """
     Create a flow that sends the user a report email.
 
@@ -146,7 +154,9 @@ def get_report_flow(user: str = None, report_type: str = None, flow_name: str = 
 
     flow_name = flow_name or f"MyFitnessPaw Email Report <{user.upper()}>"
     with Flow(
-        name=flow_name, state_handlers=[_utils.slack_notify_on_failure]
+        name=flow_name,
+        state_handlers=[_utils.slack_fail_notification],
+        terminal_state_handler=_utils.custom_terminal_state_handler,
     ) as report_flow:
         usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
         report_data = tasks.prepare_report_data_for_user(user, usermail)
@@ -157,12 +167,12 @@ def get_report_flow(user: str = None, report_type: str = None, flow_name: str = 
             report_style=report_style,
         )
         t = tasks.save_email_report_locally(report_html)  # noqa
-        # r = tasks.send_email_report(usermail, report_html)  # noqa
+        r = tasks.send_email_report(usermail, report_html)  # noqa
 
     return report_flow
 
 
-def get_backup_flow(flow_name: str = None):
+def get_backup_flow(flow_name: str = None) -> Flow:
     """
     Get a backup flow to upload the MyFitnessPaw database to a dropbox location.
 
@@ -176,7 +186,9 @@ def get_backup_flow(flow_name: str = None):
     flow_name = flow_name or "MyFitnessPaw DB Backup"
 
     with Flow(
-        flow_name, state_handlers=[_utils.slack_notify_on_failure]
+        flow_name,
+        state_handlers=[_utils.slack_fail_notification],
+        terminal_state_handler=_utils.custom_terminal_state_handler,
     ) as backup_flow:
         dbx_mfp_dir = prefect.config.myfitnesspaw.backup.dbx_backup_dir
         dbx_token = PrefectSecret("MYFITNESSPAW_DROPBOX_ACCESS_TOKEN")

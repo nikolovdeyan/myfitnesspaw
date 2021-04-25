@@ -7,23 +7,44 @@ Contains helper functions for various tasks.
 """
 
 import datetime
+import json
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import myfitnesspal
 import prefect
 import requests
 from myfitnesspal.exercise import Exercise
 from myfitnesspal.meal import Meal
-from prefect.core import Flow
+from prefect.core import Flow, Task
 from prefect.engine.state import State
 from prefect.run_configs import LocalRun
 from prefect.tasks.secrets import PrefectSecret
 
+from templates import slack_notifications
+
 from . import MFP_CONFIG_PATH, PYTHONPATH, ROOT_DIR
 
 
-def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> State:
+def custom_terminal_state_handler(
+    flow: Flow,
+    state: State,
+    task_states: Dict[Task, State],
+) -> Optional[State]:
+    """
+    See: https://docs..prefect.io/core/concepts/flows.html#terminal-state-handlers
+    """
+    # iterate through task states, making a list of failing refernce tasks
+    failed_tasks = []
+    for task, task_state in task_states.items():
+        if task_state.is_failed() and task in flow.reference_tasks():
+            failed_tasks.append(task.name)
+    # update the terminal state of the Flow and return
+    state.message = "The following tasks failed: {}".format(failed_tasks)
+    return state
+
+
+def slack_fail_notification(flow: Flow, old_state: State, new_state: State) -> State:
     """
     State handler for Slack notifications in case of flow failure.
 
@@ -43,8 +64,17 @@ def slack_notify_on_failure(flow: Flow, old_state: State, new_state: State) -> S
             logger.warning("No Slack hook url provided, skipping notification...")
             return new_state
 
-        msg = f"A MyFitnessPaw flow has failed: {flow.name}!"
-        requests.post(slack_hook_url.run(), json={"text": msg})
+        msg = slack_notifications.FLOW_ERROR % (
+            "MyFitnessPaw",
+            flow.name,
+            new_state.message,
+        )
+        slack_payload = json.loads(msg)
+        requests.post(
+            slack_hook_url.run(),
+            json=slack_payload,
+            headers={"Content-Type": "application/json"},
+        )
 
     return new_state
 
