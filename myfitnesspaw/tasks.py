@@ -569,114 +569,20 @@ def mfp_select_raw_days(
 
 
 @task
-def prepare_report_data_for_user(user: str, usermail: str) -> dict:
-    # modify: -> mfp_select_weekly_report_data(user: str, usermail: str)
+def mfp_select_weekly_report_data(user: str, usermail: str) -> dict:
     """
     Return a dictionary containing the data to populate the experimental report.
-
-    This is a temporary task. TODO: Build in a more manageable way.
     """
     with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.execute(sql.select_alpha_report_totals, (usermail,))
-        report_totals = dict(c.fetchall())
-
-        yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-        lastweek = yesterday - datetime.timedelta(days=6)
-        c.execute(
-            sql.select_alpha_report_range,
-            (usermail, lastweek.strftime("%Y-%m-%d"), yesterday.strftime("%Y-%m-%d")),
-        )
-        report_week = dict(c.fetchall())
+        c.execute(sql.weekly_report_nutrition, (usermail,))
+        report_week = c.fetchall()
 
         return {
-            "title": f"MyFitnessPaw Scheduled Report for {user}",
+            "title": "MyFitnessPaw Weekly Report",
             "user": f"{user}",
             "today": datetime.datetime.now().strftime("%d %b %Y"),
-            "weekly": {
-                "days_total": (
-                    "Number of days scraped by MyFitnessPaw",
-                    report_week.get("days_total"),
-                ),
-                "meals_consumed": (
-                    "Days where at least one daily meal was tracked",
-                    report_week.get("meals_consumed"),
-                ),
-                "meals_breakfast": (
-                    "Days with breakfast",
-                    report_week.get("meals_breakfast"),
-                ),
-                "meals_lunch": (
-                    "Days with lunch",
-                    report_week.get("meals_lunch"),
-                ),
-                "meals_dinner": (
-                    "Days with dinner",
-                    report_week.get("meals_dinner"),
-                ),
-                "meals_snacks": (
-                    "Days with snacks",
-                    report_week.get("meals_snacks"),
-                ),
-                "calories_consumed": (
-                    "Total calories consumed (all time)",
-                    report_week.get("calories_consumed"),
-                ),
-                "calories_breakfast": (
-                    "Total calories consumed for breakfast (all time)",
-                    report_week.get("calories_breakfast"),
-                ),
-                "calories_lunch": (
-                    "Total calories consumed for lunch (all time)",
-                    report_week.get("calories_lunch"),
-                ),
-                "calories_dinner": (
-                    "Total calories consumed for dinner (all time)",
-                    report_week.get("calories_dinner"),
-                ),
-                "calories_snacks": (
-                    "Total calories consumed for snacks (all time)",
-                    report_week.get("calories_snacks"),
-                ),
-            },
-            "user_totals": {
-                "days_with_meals": (
-                    "Days with at least one meal tracked",
-                    report_totals.get("days_with_meals"),
-                ),
-                "days_with_cardio": (
-                    "Days with any cardio exercises tracked",
-                    report_totals.get("days_with_cardio"),
-                ),
-                "days_with_strength": (
-                    "Days with any strength exercises tracked",
-                    report_totals.get("days_with_strength"),
-                ),
-                "days_with_measures": (
-                    "Days with any measure tracked",
-                    report_totals.get("days_with_measures"),
-                ),
-                "num_meals": (
-                    "Total number of tracked meals",
-                    report_totals.get("num_entries_meals"),
-                ),
-                "num_cardio": (
-                    "Total number of cardio exercises",
-                    report_totals.get("num_entries_meals"),
-                ),
-                "num_measures": (
-                    "Total number of measures taken",
-                    report_totals.get("num_entries_meals"),
-                ),
-                "calories_consumed": (
-                    "Total number of calories consumed",
-                    report_totals.get("total_calories_consumed"),
-                ),
-                "calories_exercised": (
-                    "Total number of calories burned with exercise",
-                    report_totals.get("total_calories_exercised"),
-                ),
-            },
+            "nutrition_tbl": report_week,
             "footer": {
                 "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             },
@@ -684,7 +590,7 @@ def prepare_report_data_for_user(user: str, usermail: str) -> dict:
 
 
 @task
-def prepare_report_style_for_user(user: str) -> dict:
+def prepare_report_style(user: str) -> dict:
     """Return a dictionary containing the values to style the experimental report."""
     return {
         "title_bg_color": "#fec478",
@@ -707,9 +613,9 @@ def render_html_email_report(
 def send_email_report(email_addr: str, message: str) -> None:
     """Send a prepared report to the provided address."""
     e = EmailTask(
-        subject="MyFitnessPaw Report",
+        subject="MyFitnessPaw Weekly Report",
         msg=message,
-        email_from="Lisko Reporting Service",
+        email_from="Lisko Home Automation",
     )
     e.run(email_to=email_addr)
 

@@ -159,8 +159,8 @@ def get_report_flow(
         terminal_state_handler=_utils.custom_terminal_state_handler,
     ) as report_flow:
         usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
-        report_data = tasks.prepare_report_data_for_user(user, usermail)
-        report_style = tasks.prepare_report_style_for_user(user)
+        report_data = tasks.mfp_select_weekly_report_data(user, usermail)
+        report_style = tasks.prepare_report_style(user)
         report_html = tasks.render_html_email_report(
             template_name="mfp_base.jinja2",
             report_data=report_data,

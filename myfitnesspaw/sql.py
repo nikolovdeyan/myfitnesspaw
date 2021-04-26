@@ -191,52 +191,32 @@ INSERT OR REPLACE INTO Measurements(userid, date, measure_name, value)
 VALUES (?, ?, ?, ?)
 """
 
-select_alpha_report_totals = """
-WITH params(username) AS  (SELECT ?)
-  SELECT 'days_total', COUNT(*) FROM params, RAWDAYDATA RDD WHERE RDD.USERID = params.username
-  UNION ALL
-  SELECT 'days_with_meals' , COUNT(*) FROM params, MEALS M   WHERE M.USERID  = params.username
-  UNION ALL
-  SELECT 'days_with_cardio', COUNT(*) FROM params, CARDIOEXERCISES CE WHERE CE.USERID  = params.username
-  UNION ALL
-  SELECT 'days_with_strength', COUNT(*) FROM params, STRENGTHEXERCISES SE WHERE SE.USERID  = params.username
-  UNION ALL
-  SELECT 'days_with_measures', COUNT(*) FROM params, MEASUREMENTS M2 WHERE M2.USERID  = params.username
-  UNION ALL
-  SELECT 'num_entries_meals', COUNT(*) FROM params, MEALS M3  WHERE M3.USERID  = params.username
-  UNION ALL
-  SELECT 'num_entries_cardio', COUNT(*) FROM params, CARDIOEXERCISES CE2 WHERE CE2.USERID  = params.username
-  UNION ALL
-  SELECT 'num_entries_strength', COUNT(*) FROM params, STRENGTHEXERCISES SE WHERE SE.USERID  = params.username
-  UNION ALL
-  SELECT 'num_entries_measures', COUNT(*) FROM params, MEASUREMENTS M4  WHERE M4.USERID = params.username
-  UNION ALL
-  SELECT 'total_calories_consumed',COALESCE (SUM(m.CALORIES), 0) FROM params, MEALS M  WHERE M.USERID  = params.username
-  UNION ALL
-  SELECT 'total_calories_exercised', COALESCE (SUM(CE.CALORIES_BURNED), 0) FROM params, CARDIOEXERCISES CE WHERE CE.USERID  = params.username
-"""
-
-select_alpha_report_range = """
-WITH params(username, date_from, date_to) AS  (SELECT ?, ?, ?)
-  SELECT 'days_total',COUNT(*) FROM params, RAWDAYDATA RDD WHERE RDD.USERID = params.username AND RDD.DATE  BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'meals_consumed', COUNT(*) from params, MEALS M WHERE M.USERID  = params.username AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'meals_breakfast', COUNT(*) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'breakfast' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'meals_lunch', COUNT(*) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'lunch' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'meals_dinner', COUNT(*) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'dinner' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'meals_snacks', COUNT(*) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'snacks' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'calories_consumed', SUM(M.CALORIES) from params, MEALS M WHERE M.USERID  = params.username AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'calories_breakfast',  SUM(M.CALORIES) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'breakfast' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'calories_lunch', SUM(M.CALORIES) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'lunch' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'calories_dinner',  SUM(M.CALORIES) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'dinner' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
-  UNION ALL
-  SELECT 'calories_snacks',  SUM(M.CALORIES) from params, MEALS M WHERE M.USERID = params.username AND M.NAME = 'snacks' AND M.DATE BETWEEN PARAMS.date_from and PARAMS.date_to
+weekly_report_nutrition = """
+WITH
+    params(username) AS (SELECT ?),
+    actual AS (
+        SELECT userid, date, sum(calories) as calories_actual, sum(carbs) as carbs_actual, sum(fat) as fat_actual, sum(protein) as protein_actual, sum(sodium) as sodium_actual, sum(sugar) as sugar_actual
+        FROM Meals, params
+        WHERE userid = params.username and date BETWEEN datetime('now', '-8 days') AND datetime('now', '-1 days')
+        GROUP BY date
+    )
+SELECT
+'username', 'date', 'day of week',
+'calories (actual)', 'calories (goal)',
+'carbs (actual)', 'carbs (goal)',
+'fat (actual)', 'fat (goal)',
+'protein (actual)', 'protein (goal)',
+'sodium (actual)', 'sodium (goal)',
+'sugar (actual)', 'sugar (goal)'
+UNION ALL
+SELECT
+    a.userid, a.date, strftime('%w', a.date) as day_of_week,
+    a.calories_actual, g.calories as calories_goal,
+    a.carbs_actual, g.carbs as carbs_goal,
+    a.fat_actual, g.fat as fat_goal,
+    a.protein_actual, g.protein as protein_goal,
+    a.sodium_actual, g.sodium as sodium_goal,
+    a.sugar_actual, g.sugar as sugar_goal
+FROM actual a
+JOIN Goals g ON a.userid = g.userid AND a.date = g.date;
 """

@@ -17,13 +17,8 @@
 		          <td bgcolor="#7a94d5" padding="0", margin="0">
 			          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
 				          <tr>
-					          <td style="text-align: left; font-weight: bold; color: #3c3a41; font-family: Roboto Slab, serif; font-size: 22px; line-height: 24px; padding: 15px 20px 0 20px;">
-                      <p style="margin: 0;"> MyFitnessPaw Report </p>
-					          </td>
-				          </tr>
-				          <tr>
-					          <td style="text-align: left; color: #57555c; font-family: 'Roboto Slab', serif; font-size: 18px; line-height: 20px; padding: 10px 20px 20px 20px;">
-              <p style="margin: 0;"> (experimental) </p>
+					          <td style="text-align: left; font-weight: bold; color: #3c3a41; font-family: Roboto Slab, serif; font-size: 22px; line-height: 24px; padding: 15px 20px 10px 20px;">
+                      <p style="margin: 0;"> {{ data.title }} </p>
 					          </td>
 				          </tr>
 			          </table>
@@ -32,7 +27,7 @@
             {% endblock title %}
 
             <!-- Article Row -->
-             {% block article %}
+            {% block article %}
 	          <tr class="article-row">
 		          <td style="background-color: {{ style.article_bg_color }}; padding: 20px;">
                 <!-- Article layout table -->
@@ -42,7 +37,7 @@
 				          <tr>
 					          <td style="vertical-align: top; font-family: Roboto, sans-serif; font-size: 14px; line-height: 22px; padding: 10px 0 0 0;">
                       <p style="margin: 0; display: block;"> Hello, {{ data.user }}!</p>
-                      <p style="margin: 0; display: block;"> This is your scheduled MyFitnessPaw report for <strong>{{ data.today }}</strong>. The report currently includes a couple of tables with general statistics about your available data. The values reported are compiled from a testing instance of the MyFitnessPaw database and reflect only the data points that are currently available in it. As we retroactively scrape historical data from myfitnesspal.com, these numbers will sometimes change erraticaly to reflect the changes.
+                      <p style="margin: 0; display: block;"> This is your weekly MyFitnessPaw report for <strong>{{ data.today }}</strong>.
 					          </td>
 				          </tr>
 
@@ -52,33 +47,15 @@
                       <!-- Data table  -->
                       <table width="100%" style="border-collapse: collapse;">
                         <tr>
-                          <td colspan="2" style="background-color: #7a94d5; font-family: 'Roboto Condensed', sans-serif; font-size: 18px; line-height: 22px; padding: 10px 5px 10px 5px;">Weekly report:</td>
+                          <td colspan="4" style="background-color: #7a94d5; font-family: 'Roboto Condensed', sans-serif; font-size: 18px; line-height: 22px; padding: 10px 5px 10px 5px;">Nutrition report:</td>
                         </tr>
 
-                        {% for k, v in data.weekly.items() %}
+                        {% for d in data.nutrition_tbl %}
                         <tr>
-                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px;">{{ v[0] }}</td>
-                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 10px 4px 10px;">{{ v[1] }}</td>
-                        </tr>
-                        {% endfor %}
-
-                      </table>
-                    </td>
-                  </tr>
-
-                  <!-- Article table row (Totals) -->
-                  <tr>
-                    <td style="padding: 10px 0 0 0;">
-                      <!-- Data table  -->
-                      <table width="100%" style="border-collapse: collapse;">
-                        <tr>
-                          <td colspan="2" style="background-color: #7a94d5; font-family: 'Roboto Condensed', sans-serif; font-size: 18px; line-height: 22px; padding: 10px 5px 10px 5px;">User totals:</td>
-                        </tr>
-
-                        {% for k, v in data.user_totals.items() %}
-                        <tr>
-                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px;">{{ v[0] }}</td>
-                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 10px 4px 10px;">{{ v[1] }}</td>
+                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px;">{{ d[1] }}</td>
+                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 10px 4px 10px;">{{ d[2] }}</td>
+                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 10px 4px 10px;">{{ d[3] }}</td>
+                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 10px 4px 10px;">{{ d[4] }}</td>
                         </tr>
                         {% endfor %}
 
