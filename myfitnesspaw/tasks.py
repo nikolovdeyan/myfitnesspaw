@@ -573,16 +573,21 @@ def mfp_select_weekly_report_data(user: str, usermail: str) -> dict:
     """
     Return a dictionary containing the data to populate the experimental report.
     """
+    report_from = datetime.date.today() - datetime.timedelta(days=8)
+    report_to = datetime.date.today() - datetime.timedelta(days=1)
     with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
-        c.execute(sql.weekly_report_nutrition, (usermail,))
+        c.execute(sql.select_nutrition_report, (usermail, report_from, report_to))
         report_week = c.fetchall()
+        nutrition_tbl_header = report_week[0][1:5]
+        nutrition_tbl_data = [row[1:5] for row in report_week[1:]]
 
         return {
             "title": "MyFitnessPaw Weekly Report",
             "user": f"{user}",
             "today": datetime.datetime.now().strftime("%d %b %Y"),
-            "nutrition_tbl": report_week,
+            "nutrition_tbl_header": nutrition_tbl_header,
+            "nutrition_tbl_data": nutrition_tbl_data,
             "footer": {
                 "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             },

@@ -47,15 +47,19 @@
                       <!-- Data table  -->
                       <table width="100%" style="border-collapse: collapse;">
                         <tr>
-                          <td colspan="4" style="background-color: #7a94d5; font-family: 'Roboto Condensed', sans-serif; font-size: 18px; line-height: 22px; padding: 10px 5px 10px 5px;">Nutrition report:</td>
+                          <td colspan="4" style="background-color: #7a94d5; font-family: 'Roboto Condensed', sans-serif; font-size: 18px; line-height: 22px; padding: 10px 5px 10px 5px;">Nutrition:</td>
                         </tr>
 
-                        {% for d in data.nutrition_tbl %}
                         <tr>
-                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px;">{{ d[1] }}</td>
-                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 10px 4px 10px;">{{ d[2] }}</td>
-                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 10px 4px 10px;">{{ d[3] }}</td>
-                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 10px 4px 10px;">{{ d[4] }}</td>
+                          {% for cell in data.nutrition_tbl_header %}
+                          <th style="background-color: #B5C7F5; color: #3c3a41; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px;">{{ cell }}</th>
+                          {% endfor %}
+                        </tr>
+                        {% for row in data.nutrition_tbl_data %}
+                        <tr>
+                          {% for cell in row %}
+                          <td style="background-color: {{ loop.cycle('#B5C7F5', '#DCE4FA') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px; border-bottom: 1px solid #7A94D5;">{{ cell }}</td>
+                          {% endfor %}
                         </tr>
                         {% endfor %}
 

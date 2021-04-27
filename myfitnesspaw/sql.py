@@ -191,26 +191,27 @@ INSERT OR REPLACE INTO Measurements(userid, date, measure_name, value)
 VALUES (?, ?, ?, ?)
 """
 
-weekly_report_nutrition = """
+select_nutrition_report = """
 WITH
-    params(username) AS (SELECT ?),
+    params(username, date_from, date_to) AS (SELECT ?, ?, ?),
     actual AS (
         SELECT userid, date, sum(calories) as calories_actual, sum(carbs) as carbs_actual, sum(fat) as fat_actual, sum(protein) as protein_actual, sum(sodium) as sodium_actual, sum(sugar) as sugar_actual
         FROM Meals, params
-        WHERE userid = params.username and date BETWEEN datetime('now', '-8 days') AND datetime('now', '-1 days')
+        WHERE userid = params.username AND date BETWEEN date(params.date_from) AND date(date_to)
         GROUP BY date
     )
 SELECT
-'username', 'date', 'day of week',
-'calories (actual)', 'calories (goal)',
-'carbs (actual)', 'carbs (goal)',
-'fat (actual)', 'fat (goal)',
-'protein (actual)', 'protein (goal)',
-'sodium (actual)', 'sodium (goal)',
-'sugar (actual)', 'sugar (goal)'
+    'username', 'date', 'day of week',
+    'calories (actual)', 'calories (goal)',
+    'carbs (actual)', 'carbs (goal)',
+    'fat (actual)', 'fat (goal)',
+    'protein (actual)', 'protein (goal)',
+    'sodium (actual)', 'sodium (goal)',
+    'sugar (actual)', 'sugar (goal)'
 UNION ALL
 SELECT
-    a.userid, a.date, strftime('%w', a.date) as day_of_week,
+    a.userid, a.date,
+    substr('SunMonTueWedThuFriSat', 1 + 3*strftime('%w', a.date), 3) as day_of_week,
     a.calories_actual, g.calories as calories_goal,
     a.carbs_actual, g.carbs as carbs_goal,
     a.fat_actual, g.fat as fat_goal,
@@ -218,5 +219,6 @@ SELECT
     a.sodium_actual, g.sodium as sodium_goal,
     a.sugar_actual, g.sugar as sugar_goal
 FROM actual a
-JOIN Goals g ON a.userid = g.userid AND a.date = g.date;
+JOIN Goals g ON a.userid = g.userid AND a.date = g.date
+ORDER BY a.date DESC;
 """
