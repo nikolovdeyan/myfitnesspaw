@@ -9,6 +9,7 @@ jsonpickle = "*"
 myfitnesspal = "*"
 dropbox = "*"
 jinja2 = "*"
+matplotlib = "*"
 
 [dev-packages]
 isort = "*"

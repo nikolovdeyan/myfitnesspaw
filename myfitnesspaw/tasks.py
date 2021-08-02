@@ -13,6 +13,8 @@ from typing import Any, List, Tuple, Union, cast
 import dropbox
 import jinja2
 import jsonpickle
+import matplotlib.pyplot as plt
+import numpy as np
 import prefect
 from dropbox.files import WriteMode
 from myfitnesspal.meal import Meal
@@ -573,7 +575,7 @@ def mfp_select_weekly_report_data(user: str, usermail: str) -> dict:
     """
     Return a dictionary containing the data to populate the experimental report.
     """
-    report_from = datetime.date.today() - datetime.timedelta(days=8)
+    report_from = datetime.date.today() - datetime.timedelta(days=7)
     report_to = datetime.date.today() - datetime.timedelta(days=1)
     with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
@@ -595,12 +597,106 @@ def mfp_select_weekly_report_data(user: str, usermail: str) -> dict:
 
 
 @task
-def prepare_report_style(user: str) -> dict:
+def mfp_select_daily_report_data(user: str, usermail: str) -> dict:
+    """
+    Return a dictionary containing the data to populate the experimental report.
+    """
+    # TODO: fix hardcoded values
+    end_goal = 150000
+    starting_date = datetime.date.today() - datetime.timedelta(days=30)
+    report_tbl_span_limit = 7
+
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.execute(sql.select_daily_report, (usermail, starting_date, end_goal))
+        report_data = c.fetchall()
+        nutrition_tbl_header = [
+            "day",
+            "date",
+            "cal target",
+            "deficit target",
+            "deficit actual",
+            "running deficit",
+        ]
+        report_window_data = [row for row in report_data if row[4] is not None]
+        yesterday_tbl_row = report_window_data[-1]
+        chart_data = calculate_chart_data(end_goal, yesterday_tbl_row)
+        highlight_row_data = None
+        current_day_number = yesterday_tbl_row[0]
+        nutrition_tbl_data = report_window_data[(report_tbl_span_limit * -1) :]
+
+        return {
+            "title": f"MyFitnessPaw Daily Report (Day {current_day_number})",
+            "user": f"{user}".capitalize(),
+            "today": datetime.datetime.now().strftime("%d %b %Y"),
+            "current_day_number": current_day_number,
+            "nutrition_tbl_header": nutrition_tbl_header,
+            "nutrition_tbl_data": nutrition_tbl_data,
+            "chart_data": chart_data,
+            "highlight_row_data": highlight_row_data,
+            "footer": {
+                "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            },
+        }
+
+
+@task
+def prepare_report_style(style_name: str) -> dict:
     """Return a dictionary containing the values to style the experimental report."""
-    return {
-        "title_bg_color": "#fec478",
-        "article_bg_color": "#EDF2FF",
+    available_styles = {
+        "blues": {
+            "title_bg_color": "#fec478",
+            "article_bg_color": "#EDF2FF",
+        },
+        "lisk": {
+            "title_bg_color": "#fe8821",
+            "article_bg_color": "#feecd3",
+            "bg-1": "#FEECD3",
+            "bg0": "#FEDBAB",
+            "bg+1": "#FEDBAB",
+            "fg-1": "#FFB967",
+            "fg0": "#FE8821",
+            "fg+1": "",
+            "text-1": "",
+            "text0": "#3C3A41",
+            "text+1": "",
+            "accent": "#21D8FF",
+            "faded": "#958476",
+            "faded-1": "#CCBBAD",
+            "warning": "#FF3D14",
+        },
     }
+    return available_styles.get(style_name)
+
+
+@task
+def prepare_report_chart(report_data, report_style):
+    chart_data = report_data.get("chart_data", None)
+    col = list(chart_data.values())[0][1]
+    vals = tuple(chart_data.values())[0][0]
+    category_colors = [
+        report_style.get("faded", "green"),
+        report_style.get(col, None),
+        report_style.get("faded-1", "lightgray"),
+    ]
+    labels = list(chart_data.keys())
+    data = np.array(list(vals))
+    data_cum = data.cumsum()
+    fig = plt.figure(figsize=(5.5, 0.7))
+    ax = fig.add_subplot(111)
+
+    fig.set_facecolor("#00000000")
+    ax.set_axis_off()
+    ax.set_ymargin(0.5)
+    ax.set_xlim(0, np.sum(data, axis=0).max())
+    goals_bar = ax.barh(  # noqa
+        labels,
+        width=data,
+        left=data_cum[:] - data,
+        color=category_colors,
+    )
+
+    plt.savefig("test.svg")
 
 
 @task
@@ -615,10 +711,10 @@ def render_html_email_report(
 
 
 @task
-def send_email_report(email_addr: str, message: str) -> None:
+def send_email_report(email_addr: str, subject: str, message: str) -> None:
     """Send a prepared report to the provided address."""
     e = EmailTask(
-        subject="MyFitnessPaw Weekly Report",
+        subject=subject,
         msg=message,
         email_from="Lisko Home Automation",
     )
@@ -675,3 +771,34 @@ def apply_backup_rotation_scheme(
         res = dbx.files_delete(f"{dbx_mfp_dir}/{filename}")
         deleted.append((res.name, res.content_hash))
     return deleted
+
+
+def calculate_chart_data(end_goal, report_data):
+    current_date = report_data[1]
+    deficit_actual = report_data[4]
+    deficit_accumulated = report_data[5]
+
+    if deficit_actual < 0:
+        deficit_remaining = end_goal - deficit_accumulated + abs(deficit_actual)
+        current_date_data = (
+            (
+                deficit_accumulated - abs(deficit_actual),
+                abs(deficit_actual),
+                deficit_remaining + deficit_actual,
+            ),
+            "warning",
+        )
+
+    else:
+        deficit_remaining = end_goal - deficit_accumulated - deficit_actual
+        current_date_data = (
+            (
+                deficit_accumulated,
+                deficit_actual,
+                deficit_remaining,
+            ),
+            "accent",
+        )
+
+    chart_data = {current_date: current_date_data}
+    return chart_data

@@ -134,9 +134,6 @@ def get_report_flow(
     """
     Create a flow that sends the user a report email.
 
-    Note: The `report_type` argument is currently not used and only the experimental weekly
-    report is available for dispatch.
-
     Args:
        - user (str): MyFitnessPaw username associated with the created workflow
        - report_type (str, optional): The type of report that will be dispached by the flow
@@ -151,25 +148,50 @@ def get_report_flow(
 
     if not user:
         raise ValueError("An user must be provided for the flow.")
+    if not report_type:
+        raise ValueError("A report type must be provided for the flow.")
 
-    flow_name = flow_name or f"MyFitnessPaw Email Report <{user.upper()}>"
-    with Flow(
-        name=flow_name,
-        state_handlers=[_utils.slack_fail_notification],
-        terminal_state_handler=_utils.custom_terminal_state_handler,
-    ) as report_flow:
-        usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
-        report_data = tasks.mfp_select_weekly_report_data(user, usermail)
-        report_style = tasks.prepare_report_style(user)
-        report_html = tasks.render_html_email_report(
-            template_name="mfp_base.jinja2",
-            report_data=report_data,
-            report_style=report_style,
-        )
-        t = tasks.save_email_report_locally(report_html)  # noqa
-        r = tasks.send_email_report(usermail, report_html)  # noqa
+    flow_name = (
+        flow_name
+        or f"MyFitnessPaw {report_type.capitalize()} Email Report <{user.upper()}>"
+    )
 
-    return report_flow
+    if report_type.lower() == "weekly":
+        with Flow(
+            name=flow_name,
+        ) as weekly_flow:
+            usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
+            report_data = tasks.mfp_select_weekly_report_data(user, usermail)
+            report_style = tasks.prepare_report_style(user)
+            report_html = tasks.render_html_email_report(
+                template_name="mfp_base.jinja2",
+                report_data=report_data,
+                report_style=report_style,
+            )
+            t = tasks.save_email_report_locally(report_html)  # noqa
+            current_day_number = report_data.get("current_day", None)
+            subject_text = (  # noqa
+                f"MyFitnessPaw Daily Progress Report (Day {current_day_number})"
+            )
+            # r = tasks.send_email_report(usermail, subject_text, report_html)  # noqa
+        return weekly_flow
+
+    elif report_type.lower() == "daily":
+        with Flow(
+            name=flow_name,
+        ) as daily_flow:
+            usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
+            report_data = tasks.mfp_select_daily_report_data(user, usermail)
+            report_style = tasks.prepare_report_style("lisk")
+            report_chart = tasks.prepare_report_chart(report_data, report_style)  # noqa
+            report_html = tasks.render_html_email_report(
+                template_name="mfp_daily.jinja2",
+                report_data=report_data,
+                report_style=report_style,
+            )
+            t = tasks.save_email_report_locally(report_html)  # noqa
+            # r = tasks.send_email_report(usermail, report_html)  # noqa
+        return daily_flow
 
 
 def get_backup_flow(flow_name: str = None) -> Flow:

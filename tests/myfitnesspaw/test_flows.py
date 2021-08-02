@@ -29,16 +29,20 @@ class TestFlows:
 
     def test__get_report_flow__without_passed_flow_name__applies_default_name(self):
         user = "testuser"
+        report_type = "daily"
 
-        f = flows.get_report_flow(user=user)
+        f = flows.get_report_flow(user=user, report_type=report_type)
 
         assert user.upper() in f.name
 
     def test__get_report_flow__with_passed_flow_name__applies_passed_name(self):
         user = "testuser"
         flow_name = "test_flow"
+        report_type = "daily"
 
-        f = flows.get_report_flow(user=user, flow_name=flow_name)
+        f = flows.get_report_flow(
+            user=user, flow_name=flow_name, report_type=report_type
+        )
 
         assert flow_name in f.name
 

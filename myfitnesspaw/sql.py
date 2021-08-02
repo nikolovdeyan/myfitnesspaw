@@ -191,6 +191,49 @@ INSERT OR REPLACE INTO Measurements(userid, date, measure_name, value)
 VALUES (?, ?, ?, ?)
 """
 
+# substr('XXXJanFebMarAprMayJunJulAugSepOctNovDec', 1 + 3*STRFTIME('%m', g.date), 3)
+
+select_daily_report = """
+WITH params(username, starting_date, end_goal) AS (SELECT ?, ?, ?)
+     ,userstats AS (
+        SELECT
+            username AS userid,
+            1.2 * (10 * (SELECT value FROM Measurements WHERE userid = username ORDER BY date DESC LIMIT 1) +6.25 * 182 -  5 * 34 + 5) AS RMR,
+            starting_date,
+            end_goal
+        FROM params
+)
+
+SELECT
+    ROW_NUMBER() OVER (ORDER BY date) AS day_number,
+    STRFTIME('%d', date)
+   || '-' ||
+    SUBSTR('XXXJanFebMarAprMayJunJulAugSepOctNovDec', 1 + 3*STRFTIME('%m', date), 3)
+    || '-' ||
+    STRFTIME('%Y', date) AS date,
+    calories_target,
+    deficit_target,
+    deficit_actual,
+    deficit_accumulated
+FROM
+    (SELECT
+        g.date,
+        g.calories AS calories_target,
+        CAST(u.RMR - g.calories + (SELECT COALESCE(SUM(calories_burned), 0) FROM CardioExercises WHERE userid = u.userid AND date = g.date) AS INT) AS deficit_target,
+        CAST(u.RMR - g.calories + (SELECT COALESCE(SUM(calories_burned), 0) FROM CardioExercises WHERE userid = u.userid AND date = g.date)
+        +
+        (g.calories - (SELECT SUM(calories) FROM Meals WHERE userid = u.userid AND date = g.date)) AS INT) AS deficit_actual,
+        CAST(COALESCE(ROUND(SUM(u.RMR - g.calories + (SELECT COALESCE(SUM(calories_burned), 0)  FROM CardioExercises WHERE userid = u.userid AND date = g.date)
+        +
+        (g.calories - (SELECT SUM(calories) FROM Meals WHERE userid = u.userid AND date = g.date))) OVER (ORDER BY date), 0), 0) AS INT) AS deficit_accumulated
+    FROM Goals g
+    JOIN  userstats u ON g.userid = u.userid
+    WHERE g.date >= u.starting_date
+    ORDER BY g.date
+    )
+WHERE deficit_actual IS NOT NULL
+"""
+
 select_nutrition_report = """
 WITH
     params(username, date_from, date_to) AS (SELECT ?, ?, ?),
@@ -220,5 +263,5 @@ SELECT
     a.sugar_actual, g.sugar as sugar_goal
 FROM actual a
 JOIN Goals g ON a.userid = g.userid AND a.date = g.date
-ORDER BY a.date DESC;
+ORDER BY a.date ASC;
 """

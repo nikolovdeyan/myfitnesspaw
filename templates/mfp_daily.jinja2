@@ -1,0 +1,115 @@
+{% extends "lisko_report_base.jinja2" %}
+
+    {% block head %}
+
+      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	    <title>{{ data.title }}</title>
+	    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	    <style type="text/css">a[x-apple-data-detectors] {color: inherit !important;}</style>
+      <link rel="preconnect" href="https://fonts.gstatic.com">
+      <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:ital,wght@0,300;0,400;0,700;1,400&family=Roboto+Slab:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" type='text/css'> 
+
+    {% endblock head %}
+
+            <!-- Title Row -->
+            {% block title %}
+	          <tr class="title-row">
+		          <td bgcolor="{{ style.title_bg_color }}" padding="0", margin="0">
+			          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+				          <tr>
+					          <td style="text-align: left; font-weight: bold; color: #3c3a41; font-family: Roboto Slab, serif; font-size: 22px; line-height: 24px; padding: 15px 20px 10px 20px;">
+                      <p style="margin: 0;"> {{ data.title }} </p>
+					          </td>
+				          </tr>
+			          </table>
+		          </td>
+	            </tr>
+            {% endblock title %}
+
+            <!-- Article Row -->
+            {% block article %}
+	          <tr class="article-row">
+		          <td style="background-color: {{ style.article_bg_color }}; padding: 20px;">
+                <!-- Article layout table -->
+			          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+
+                  <!-- Article intro row -->
+				          <tr>
+					          <td style="vertical-align: top; font-family: Roboto, sans-serif; font-size: 14px; line-height: 22px; padding: 10px 0 0 0;">
+                      <p style="margin: 0; display: block;"> Hello, {{ data.user }}!</p>
+                      <p style="margin: 0; display: block;"> This is your daily MyFitnessPaw report for <strong>{{ data.today }}</strong>.
+					          </td>
+				          </tr>
+
+                  
+                  <!-- Article table row (Weekly) -->
+                  <tr>
+                    <td style="padding: 10px 0 0 0;">
+
+                      <!-- Data table  -->
+                      <table width="100%" style="border-collapse: collapse;">
+                        <tr>
+                          <td colspan="6" style="background-color: {{ style.title_bg_color }}; font-family: 'Roboto Condensed', sans-serif; font-size: 18px; line-height: 22px; padding: 10px 5px 10px 5px;">Goals tracking:</td>
+                        </tr>
+
+                        <!-- Chart row -->
+                        <tr>
+                          <td colspan="6">
+                            <img src="./test.svg">
+                          </td>
+                        </tr>
+
+                        <tr>
+                          {% for cell in data.nutrition_tbl_header %}
+                          <th style="background-color: #ffb967; color: #3c3a41; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px;">{{ cell }}</th>
+                          {% endfor %}
+                        </tr>
+                        {% for row in data.nutrition_tbl_data %}
+                        <tr>
+                          {% for cell in row %}
+                            <td style="background-color: {{ loop.cycle('#fedbab', '#feecd3') }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px; border-bottom: 1px solid {{ style.title_bg_color }};">{{ cell }}</td>
+                          {% endfor %}
+                        </tr>
+                        {% endfor %}
+
+                      </table>
+                    </td>
+                  </tr>
+
+			          </table>
+		          </td>
+	          </tr>
+             {% endblock article %}
+
+            <!-- Footer Row -->
+             {% block footer %}
+	            <tr class="footer-row">
+		            <td bgcolor="#3c3a41" style="color: #727175; font-family: 'Roboto Condensed', serif; font-weight: bold; font-size: 12px; line-height: 14px; padding: 0 20px 0 20px;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                    <tr>
+                      <td width="80%">
+                        <p style="margin: 0; padding-top: 10px;">Generated on {{ data.footer.generated_ts }} by Lisko</p>
+                      </td>
+                      <td rowspan="2" width="20%" align="right">
+                        <a href="https://cloud.prefect.io" >
+                          <img src="https://raw.githubusercontent.com/nikolovdeyan/lisko/main/resources/lisko_logo_96px.png" alt="Lisko at Prefect Cloud" style="display: block; width: 40px; height: 40px; border: none;"/>
+                      </a>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td><p style="margin: 0; padding: 4px 0 10px 0;">MyFitnessPaw is part of the <a href="https://github.com/nikolovdeyan/lisko" style="color: #597cd5;">Lisko Home Automation Project</a></p></td>
+                    </tr>
+                  </table>
+		            </td>
+	            </tr>
+              {% endblock footer %}
+          <!-- Container Table END -->
+          </table>
+
+			  </td>
+		  </tr>
+	  </table>
+
+  </body>
+
+</html>
