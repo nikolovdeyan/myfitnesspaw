@@ -571,73 +571,59 @@ def mfp_select_raw_days(
 
 
 @task
-def mfp_select_weekly_report_data(user: str, usermail: str) -> dict:
+def mfp_select_daily_report_data(
+    user: str,
+    usermail: str,
+    starting_date: datetime.date,
+    end_goal: int,
+    report_tbl_span_limit: int = 7,
+) -> dict:
     """
     Return a dictionary containing the data to populate the experimental report.
     """
-    report_from = datetime.date.today() - datetime.timedelta(days=7)
-    report_to = datetime.date.today() - datetime.timedelta(days=1)
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.execute(sql.select_nutrition_report, (usermail, report_from, report_to))
-        report_week = c.fetchall()
-        nutrition_tbl_header = report_week[0][1:5]
-        nutrition_tbl_data = [row[1:5] for row in report_week[1:]]
-
-        return {
-            "title": "MyFitnessPaw Weekly Report",
-            "user": f"{user}",
-            "today": datetime.datetime.now().strftime("%d %b %Y"),
-            "nutrition_tbl_header": nutrition_tbl_header,
-            "nutrition_tbl_data": nutrition_tbl_data,
-            "footer": {
-                "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            },
-        }
-
-
-@task
-def mfp_select_daily_report_data(user: str, usermail: str) -> dict:
-    """
-    Return a dictionary containing the data to populate the experimental report.
-    """
-    # TODO: fix hardcoded values
-    end_goal = 150000
-    starting_date = datetime.date.today() - datetime.timedelta(days=30)
-    report_tbl_span_limit = 7
-
     with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
         c.execute(sql.select_daily_report, (usermail, starting_date, end_goal))
         report_data = c.fetchall()
-        nutrition_tbl_header = [
-            "day",
-            "date",
-            "cal target",
-            "deficit target",
-            "deficit actual",
-            "running deficit",
-        ]
-        report_window_data = [row for row in report_data if row[4] is not None]
-        yesterday_tbl_row = report_window_data[-1]
-        chart_data = calculate_chart_data(end_goal, yesterday_tbl_row)
-        highlight_row_data = None
-        current_day_number = yesterday_tbl_row[0]
-        nutrition_tbl_data = report_window_data[(report_tbl_span_limit * -1) :]
 
-        return {
-            "title": f"MyFitnessPaw Daily Report (Day {current_day_number})",
-            "user": f"{user}".capitalize(),
-            "today": datetime.datetime.now().strftime("%d %b %Y"),
-            "current_day_number": current_day_number,
-            "nutrition_tbl_header": nutrition_tbl_header,
-            "nutrition_tbl_data": nutrition_tbl_data,
-            "chart_data": chart_data,
-            "highlight_row_data": highlight_row_data,
-            "footer": {
-                "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            },
-        }
+    logger = prefect.context.get("logger")
+    report_window_data = [row for row in report_data if row[4] is not None]
+    logger.info(f"report_window_data: {report_window_data}")
+    yesterday_str = (datetime.date.today() - datetime.timedelta(days=1)).strftime(
+        "%d-%b-%Y"
+    )
+
+    # if report starts from today or yesterday has no entered info, return None
+    if not report_window_data or report_window_data[-1][1] != yesterday_str:
+        return {}
+
+    nutrition_tbl_header = [
+        "day",
+        "date",
+        "cal target",
+        "deficit target",
+        "deficit actual",
+        "running deficit",
+    ]
+    yesterday_tbl_row = report_window_data[-1]
+    chart_data = calculate_chart_data(end_goal, yesterday_tbl_row)
+    highlight_row_data = None
+    current_day_number = yesterday_tbl_row[0]
+    nutrition_tbl_data = report_window_data[(report_tbl_span_limit * -1) :]
+
+    return {
+        "title": f"MyFitnessPaw Daily Report (Day {current_day_number})",
+        "user": f"{user}".capitalize(),
+        "today": datetime.datetime.now().strftime("%d %b %Y"),
+        "current_day_number": current_day_number,
+        "nutrition_tbl_header": nutrition_tbl_header,
+        "nutrition_tbl_data": nutrition_tbl_data,
+        "chart_data": chart_data,
+        "highlight_row_data": highlight_row_data,
+        "footer": {
+            "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        },
+    }
 
 
 @task

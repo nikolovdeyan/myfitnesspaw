@@ -4,6 +4,8 @@ myfitnesspaw.flows
 This module contains the predefined Prefect Flows to use with MyFitnessPaw.
 """
 
+import datetime
+
 import prefect
 from prefect import Flow, unmapped
 from prefect.core import Parameter
@@ -145,7 +147,6 @@ def get_report_flow(
     Raises:
        - ValueError: if the `user` keyword argument is not provided
     """
-
     if not user:
         raise ValueError("An user must be provided for the flow.")
     if not report_type:
@@ -156,32 +157,19 @@ def get_report_flow(
         or f"MyFitnessPaw {report_type.capitalize()} Email Report <{user.upper()}>"
     )
 
-    if report_type.lower() == "weekly":
-        with Flow(
-            name=flow_name,
-        ) as weekly_flow:
-            usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
-            report_data = tasks.mfp_select_weekly_report_data(user, usermail)
-            report_style = tasks.prepare_report_style(user)
-            report_html = tasks.render_html_email_report(
-                template_name="mfp_base.jinja2",
-                report_data=report_data,
-                report_style=report_style,
-            )
-            t = tasks.save_email_report_locally(report_html)  # noqa
-            current_day_number = report_data.get("current_day", None)
-            subject_text = (  # noqa
-                f"MyFitnessPaw Daily Progress Report (Day {current_day_number})"
-            )
-            # r = tasks.send_email_report(usermail, subject_text, report_html)  # noqa
-        return weekly_flow
-
-    elif report_type.lower() == "daily":
+    if report_type.lower() == "daily":
         with Flow(
             name=flow_name,
         ) as daily_flow:
             usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
-            report_data = tasks.mfp_select_daily_report_data(user, usermail)
+            starting_date = Parameter(
+                name="starting_date", default=datetime.date.today()
+            )
+            end_goal = Parameter(name="end_goal", default=150000)
+            report_data = tasks.mfp_select_daily_report_data(
+                user, usermail, starting_date, end_goal
+            )
+
             report_style = tasks.prepare_report_style("lisk")
             report_chart = tasks.prepare_report_chart(report_data, report_style)  # noqa
             report_html = tasks.render_html_email_report(
