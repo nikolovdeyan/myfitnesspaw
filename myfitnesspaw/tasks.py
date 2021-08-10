@@ -5,10 +5,17 @@ Contains all tasks used in this project's flows.
 """
 
 import datetime
+import os
+import smtplib
 import sqlite3
-from pathlib import Path
+import ssl
 from contextlib import closing
 from datetime import timedelta
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path
 from typing import Any, List, Tuple, Union, cast
 
 import dropbox
@@ -20,6 +27,7 @@ import prefect
 from dropbox.files import WriteMode
 from myfitnesspal.meal import Meal
 from prefect import Task, task
+from prefect.client import Secret
 from prefect.utilities.tasks import defaults_from_attrs
 
 from . import DB_PATH, TEMPLATES_DIR, sql
@@ -30,18 +38,6 @@ from ._utils import (
     try_parse_date_str,
 )
 
-import os
-import ssl
-import smtplib
-from email import encoders
-from email.mime.base import MIMEBase
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from typing import Any, cast, List
-
-from prefect import Task
-from prefect.client import Secret
-from prefect.utilities.tasks import defaults_from_attrs
 
 class SQLiteExecuteMany(Task):
     """
@@ -221,7 +217,7 @@ class LiskoEmailTask(Task):
                 "Content-Disposition",
                 f"attachment; filename= {filename}",
             )
-            part.add_header("Content-ID", f"<test.png@lisko.id>")
+            part.add_header("Content-ID", "<test.png@lisko.id>")
             message.attach(part)
 
         context = ssl.create_default_context()
@@ -823,6 +819,7 @@ def render_html_email_report(
 @task
 def prepare_report_subject(report_data):
     return report_data.get("subject", None)
+
 
 @task
 def send_email_report(email_addr: str, subject: str, message: str, attachments) -> None:
