@@ -6,6 +6,7 @@ Contains all tasks used in this project's flows.
 
 import datetime
 import sqlite3
+from pathlib import Path
 from contextlib import closing
 from datetime import timedelta
 from typing import Any, List, Tuple, Union, cast
@@ -19,7 +20,6 @@ import prefect
 from dropbox.files import WriteMode
 from myfitnesspal.meal import Meal
 from prefect import Task, task
-from prefect.tasks.notifications.email_task import EmailTask
 from prefect.utilities.tasks import defaults_from_attrs
 
 from . import DB_PATH, TEMPLATES_DIR, sql
@@ -30,6 +30,18 @@ from ._utils import (
     try_parse_date_str,
 )
 
+import os
+import ssl
+import smtplib
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from typing import Any, cast, List
+
+from prefect import Task
+from prefect.client import Secret
+from prefect.utilities.tasks import defaults_from_attrs
 
 class SQLiteExecuteMany(Task):
     """
@@ -121,6 +133,111 @@ class SQLiteExecuteMany(Task):
                 cursor.execute("PRAGMA foreign_keys = YES;")
             cursor.executemany(query, data)
             conn.commit()
+
+
+class LiskoEmailTask(Task):
+    def __init__(
+        self,
+        subject: str = None,
+        msg: str = None,
+        email_to: str = None,
+        email_from: str = "notifications@prefect.io",
+        smtp_server: str = "smtp.gmail.com",
+        smtp_port: int = 465,
+        smtp_type: str = "SSL",
+        msg_plain: str = None,
+        email_to_cc: str = None,
+        email_to_bcc: str = None,
+        attachments: List[str] = None,
+        **kwargs: Any,
+    ):
+        self.subject = subject
+        self.msg = msg
+        self.email_to = email_to
+        self.email_from = email_from
+        self.smtp_server = smtp_server
+        self.smtp_port = smtp_port
+        self.smtp_type = smtp_type
+        self.msg_plain = msg_plain
+        self.email_to_cc = email_to_cc
+        self.email_to_bcc = email_to_bcc
+        self.attachments = attachments or []
+        super().__init__(**kwargs)
+
+    @defaults_from_attrs(
+        "subject",
+        "msg",
+        "email_to",
+        "email_from",
+        "smtp_server",
+        "smtp_port",
+        "smtp_type",
+        "msg_plain",
+        "email_to_cc",
+        "email_to_bcc",
+        "attachments",
+    )
+    def run(
+        self,
+        subject: str = None,
+        msg: str = None,
+        email_to: str = None,
+        email_from: str = None,
+        smtp_server: str = None,
+        smtp_port: int = None,
+        smtp_type: str = None,
+        msg_plain: str = None,
+        email_to_cc: str = None,
+        email_to_bcc: str = None,
+        attachments: List[str] = None,
+    ) -> None:
+        username = cast(str, Secret("EMAIL_USERNAME").get())
+        password = cast(str, Secret("EMAIL_PASSWORD").get())
+
+        message = MIMEMultipart()
+        message["Subject"] = subject
+        message["From"] = email_from
+        message["To"] = email_to
+        if email_to_cc:
+            message["Cc"] = email_to_cc
+        if email_to_bcc:
+            message["Bcc"] = email_to_bcc
+
+        # First add the message in plain text, then the HTML version. Email clients try to render
+        # the last part first
+        if msg_plain:
+            message.attach(MIMEText(msg_plain, "plain"))
+        if msg:
+            message.attach(MIMEText(msg, "html"))
+
+        for filepath in attachments:
+            with open(filepath, "rb") as attachment:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(attachment.read())
+
+            encoders.encode_base64(part)
+            filename = os.path.basename(filepath)
+            part.add_header(
+                "Content-Disposition",
+                f"attachment; filename= {filename}",
+            )
+            part.add_header("Content-ID", f"<test.png@lisko.id>")
+            message.attach(part)
+
+        context = ssl.create_default_context()
+        if smtp_type == "SSL":
+            server = smtplib.SMTP_SSL(smtp_server, smtp_port, context=context)
+        elif smtp_type == "STARTTLS":
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls(context=context)
+        else:
+            raise ValueError(f"{smtp_type} is an unsupported value for smtp_type.")
+
+        server.login(username, password)
+        try:
+            server.send_message(message)
+        finally:
+            server.quit()
 
 
 @task
@@ -574,7 +691,7 @@ def mfp_select_raw_days(
 def mfp_select_daily_report_data(
     user: str,
     usermail: str,
-    starting_date: datetime.date,
+    starting_date: str,
     end_goal: int,
     report_tbl_span_limit: int = 7,
 ) -> dict:
@@ -612,6 +729,7 @@ def mfp_select_daily_report_data(
     nutrition_tbl_data = report_window_data[(report_tbl_span_limit * -1) :]
 
     return {
+        "subject": f"MyfitnessPaw Daily Report (Day {current_day_number})",
         "title": f"MyFitnessPaw Daily Report (Day {current_day_number})",
         "user": f"{user}".capitalize(),
         "today": datetime.datetime.now().strftime("%d %b %Y"),
@@ -682,7 +800,13 @@ def prepare_report_chart(report_data, report_style):
         color=category_colors,
     )
 
-    plt.savefig("test.svg")
+    our_dir = Path().absolute()
+    chart_dir = our_dir.joinpath(Path("tmp"))
+    chart_dir.mkdir(exist_ok=True)
+    chart_file = chart_dir.joinpath(Path("temp.png"))
+
+    plt.savefig(chart_file)
+    return chart_file
 
 
 @task
@@ -697,13 +821,19 @@ def render_html_email_report(
 
 
 @task
-def send_email_report(email_addr: str, subject: str, message: str) -> None:
+def prepare_report_subject(report_data):
+    return report_data.get("subject", None)
+
+@task
+def send_email_report(email_addr: str, subject: str, message: str, attachments) -> None:
     """Send a prepared report to the provided address."""
-    e = EmailTask(
+    e = LiskoEmailTask(
         subject=subject,
         msg=message,
         email_from="Lisko Home Automation",
+        attachments=attachments,
     )
+
     e.run(email_to=email_addr)
 
 

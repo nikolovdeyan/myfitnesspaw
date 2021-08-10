@@ -163,7 +163,7 @@ def get_report_flow(
         ) as daily_flow:
             usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
             starting_date = Parameter(
-                name="starting_date", default=datetime.date.today()
+                name="starting_date", default=datetime.datetime.strftime(datetime.datetime.now() - datetime.timedelta(days=5), "%Y-%m-%d"),
             )
             end_goal = Parameter(name="end_goal", default=150000)
             report_data = tasks.mfp_select_daily_report_data(
@@ -177,8 +177,10 @@ def get_report_flow(
                 report_data=report_data,
                 report_style=report_style,
             )
+            report_subject = tasks.prepare_report_subject(report_data)
             t = tasks.save_email_report_locally(report_html)  # noqa
-            # r = tasks.send_email_report(usermail, report_html)  # noqa
+            attachments = [report_chart]
+            r = tasks.send_email_report(usermail, report_subject, report_html, attachments)  # noqa
         return daily_flow
 
 
