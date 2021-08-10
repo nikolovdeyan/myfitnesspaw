@@ -37,6 +37,7 @@ from ._utils import (
     select_fifo_backups_to_delete,
     try_parse_date_str,
 )
+from .types import ProgressReport
 
 
 class SQLiteExecuteMany(Task):
@@ -227,7 +228,7 @@ class LiskoEmailTask(Task):
             server = smtplib.SMTP(smtp_server, smtp_port)
             server.starttls(context=context)
         else:
-            raise ValueError(f"{smtp_type} is an unsupported value for smtp_type.")
+            raise ValueError(f"{smtp_type} is an unsupported value for smtp_type")
 
         server.login(username, password)
         try:
@@ -684,24 +685,38 @@ def mfp_select_raw_days(
 
 
 @task
-def mfp_select_daily_report_data(
-    user: str,
-    usermail: str,
+def mfp_select_progress_report_data(
+    user_email: str,
     starting_date: str,
     end_goal: int,
-    report_tbl_span_limit: int = 7,
 ) -> dict:
+    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
+        c.execute("PRAGMA foreign_keys = YES;")
+        c.execute(sql.select_progress_report, (user_email, starting_date, end_goal))
+        report_data = c.fetchall()
+
+    return report_data
+
+
+@task
+def make_report(user, report_data, report_style, end_goal, num_rows_report_tbl):
+    report = ProgressReport(user, report_data, report_style)
+    report.end_goal = end_goal
+    report.num_rows_report_tbl = num_rows_report_tbl
+    return report
+
+
+@task
+def render_progress_report(report) -> dict:
     """
     Return a dictionary containing the data to populate the experimental report.
     """
-    with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
-        c.execute("PRAGMA foreign_keys = YES;")
-        c.execute(sql.select_daily_report, (usermail, starting_date, end_goal))
-        report_data = c.fetchall()
+    report_data = report.data
+    user = report.user
+    end_goal = report.end_goal
+    num_rows_report_tbl = report.num_rows_report_tbl
 
-    logger = prefect.context.get("logger")
     report_window_data = [row for row in report_data if row[4] is not None]
-    logger.info(f"report_window_data: {report_window_data}")
     yesterday_str = (datetime.date.today() - datetime.timedelta(days=1)).strftime(
         "%d-%b-%Y"
     )
@@ -722,62 +737,39 @@ def mfp_select_daily_report_data(
     chart_data = calculate_chart_data(end_goal, yesterday_tbl_row)
     highlight_row_data = None
     current_day_number = yesterday_tbl_row[0]
-    nutrition_tbl_data = report_window_data[(report_tbl_span_limit * -1) :]
+    nutrition_tbl_data = report_window_data[(num_rows_report_tbl * -1) :]
 
-    return {
-        "subject": f"MyfitnessPaw Daily Report (Day {current_day_number})",
-        "title": f"MyFitnessPaw Daily Report (Day {current_day_number})",
-        "user": f"{user}".capitalize(),
+    report.subject = f"MyfitnessPaw Progress Report (Day {current_day_number})"
+    report.title = f"MyFitnessPaw Progress Report (Day {current_day_number})"
+    report.userr = f"{user.username}".capitalize()
+    report.current_day = current_day_number
+    report.nutrition_tbl_header = nutrition_tbl_header
+    report.nutrition_tbl_data = nutrition_tbl_data
+    report.chart_data = chart_data
+    report.highlight_row_data = highlight_row_data
+    report.generated_ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    report.datanew = {
+        "title": report.title,
+        "user": report.userr,
         "today": datetime.datetime.now().strftime("%d %b %Y"),
-        "current_day_number": current_day_number,
-        "nutrition_tbl_header": nutrition_tbl_header,
-        "nutrition_tbl_data": nutrition_tbl_data,
-        "chart_data": chart_data,
-        "highlight_row_data": highlight_row_data,
-        "footer": {
-            "generated_ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        },
+        "nutrition_tbl_header": report.nutrition_tbl_header,
+        "nutrition_tbl_data": report.nutrition_tbl_data,
+        "generated_ts": report.generated_ts,
     }
+
+    return report
 
 
 @task
-def prepare_report_style(style_name: str) -> dict:
-    """Return a dictionary containing the values to style the experimental report."""
-    available_styles = {
-        "blues": {
-            "title_bg_color": "#fec478",
-            "article_bg_color": "#EDF2FF",
-        },
-        "lisk": {
-            "title_bg_color": "#fe8821",
-            "article_bg_color": "#feecd3",
-            "bg-1": "#FEECD3",
-            "bg0": "#FEDBAB",
-            "bg+1": "#FEDBAB",
-            "fg-1": "#FFB967",
-            "fg0": "#FE8821",
-            "fg+1": "",
-            "text-1": "",
-            "text0": "#3C3A41",
-            "text+1": "",
-            "accent": "#21D8FF",
-            "faded": "#958476",
-            "faded-1": "#CCBBAD",
-            "warning": "#FF3D14",
-        },
-    }
-    return available_styles.get(style_name)
-
-
-@task
-def prepare_report_chart(report_data, report_style):
-    chart_data = report_data.get("chart_data", None)
-    col = list(chart_data.values())[0][1]
+def prepare_report_chart(report):
+    chart_data = report.chart_data
+    color = list(chart_data.values())[0][1]
     vals = tuple(chart_data.values())[0][0]
     category_colors = [
-        report_style.get("faded", "green"),
-        report_style.get(col, None),
-        report_style.get("faded-1", "lightgray"),
+        report.style.faded0,
+        report.style.warning if color == "warning" else report.style.accent,
+        report.style.faded1,
     ]
     labels = list(chart_data.keys())
     data = np.array(list(vals))
@@ -806,32 +798,32 @@ def prepare_report_chart(report_data, report_style):
 
 
 @task
-def render_html_email_report(
-    template_name: str, report_data: dict, report_style: dict
-) -> str:
+def render_html_email_report(report: ProgressReport) -> str:
     """Render a Jinja2 HTML template containing the report to send."""
+    logger = prefect.context.get("logger")
+    logger.info(f"report.title: {report.title}")
+    logger.info(f"report.nutrition_tbl_data: {report.nutrition_tbl_data}")
+
     template_loader = jinja2.FileSystemLoader(searchpath=TEMPLATES_DIR)
     template_env = jinja2.Environment(loader=template_loader)
-    report_template = template_env.get_template(template_name)
-    return report_template.render(data=report_data, style=report_style)
+    report_template = template_env.get_template(report.template)
+    report_html = report_template.render(data=report.datanew, style=report.style)
+    return report_html
 
 
 @task
-def prepare_report_subject(report_data):
-    return report_data.get("subject", None)
-
-
-@task
-def send_email_report(email_addr: str, subject: str, message: str, attachments) -> None:
+def send_email_report(report: ProgressReport, report_html, attachments) -> None:
     """Send a prepared report to the provided address."""
     e = LiskoEmailTask(
-        subject=subject,
-        msg=message,
+        subject=report.subject,
+        msg=report_html,
         email_from="Lisko Home Automation",
         attachments=attachments,
     )
+    user = report.user
+    email = user.email
 
-    e.run(email_to=email_addr)
+    e.run(email_to=email)
 
 
 @task

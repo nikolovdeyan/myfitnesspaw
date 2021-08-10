@@ -56,17 +56,14 @@ def run_etl_flow(
 
 
 def run_report_flow(
-    user: str = None, report_type: str = None
+    user: str = None, parameters: dict = {}
 ) -> Union["prefect.engine.state.State", None]:
     """
     Create a report flow for the provided user and execute it locally.
 
-    Note: Currently only a weekly report is available for creation, so the parameter
-    `report_type` is not used.
-
     Args:
        - user (str): The name of the user to have the flow executed for
-       - report_type (str, optional): The type of report to be created
+       - parameters (dict, optional): Parameters for the selected flow type
 
     Returns:
        - State: the state of the flow after the completed run.
@@ -74,11 +71,11 @@ def run_report_flow(
     Raises:
        - ValueError: if the `user` keyword argument is not provided
     """
+    flow = flows.get_progress_report_flow(user=user)
 
-    flow = flows.get_report_flow(user=user, report_type=report_type)
     flow.run_config = _utils.get_local_run_config()
 
-    return flow.run()
+    return flow.run(parameters=parameters)
 
 
 def run_backup_flow() -> Union["prefect.engine.state.State", None]:

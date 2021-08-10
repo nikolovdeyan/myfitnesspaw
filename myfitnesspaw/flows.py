@@ -1,7 +1,7 @@
 """
 myfitnesspaw.flows
 
-This module contains the predefined Prefect Flows to use with MyFitnessPaw.
+This module contains all available Prefect Flows to use with MyFitnessPaw.
 """
 
 import datetime
@@ -12,6 +12,7 @@ from prefect.core import Parameter
 from prefect.tasks.secrets import PrefectSecret
 
 from . import DB_PATH, _utils, sql, tasks
+from .types import User
 
 
 def get_etl_flow(
@@ -33,7 +34,7 @@ def get_etl_flow(
     """
 
     if not user:
-        raise ValueError("An user must be provided for the flow.")
+        raise ValueError("An user must be provided for the flow")
 
     mfp_insertmany = tasks.SQLiteExecuteMany(db=DB_PATH, enforce_fk=True)
     flow_name = flow_name or f"MyFitnessPaw ETL <{user.upper()}>"
@@ -128,63 +129,36 @@ def get_etl_flow(
     return etl_flow
 
 
-def get_report_flow(
-    user: str = None,
-    report_type: str = None,
-    flow_name: str = None,
-) -> Flow:
-    """
-    Create a flow that sends the user a report email.
-
-    Args:
-       - user (str): MyFitnessPaw username associated with the created workflow
-       - report_type (str, optional): The type of report that will be dispached by the flow
-       - flow_name (str, optional): An optional name to be applied to the flow
-
-    Returns:
-       - prefect.Flow: The created Prefect flow ready to be run
-
-    Raises:
-       - ValueError: if the `user` keyword argument is not provided
-    """
+def get_progress_report_flow(user, flow_name=None):
     if not user:
-        raise ValueError("An user must be provided for the flow.")
-    if not report_type:
-        raise ValueError("A report type must be provided for the flow.")
+        raise ValueError("An user must be provided for the flow")
 
-    flow_name = (
-        flow_name
-        or f"MyFitnessPaw {report_type.capitalize()} Email Report <{user.upper()}>"
-    )
+    flow_name = flow_name or f"MyFitnessPaw Progress Report <{user.upper()}>"
 
-    if report_type.lower() == "daily":
-        with Flow(
-            name=flow_name,
-        ) as daily_flow:
-            usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
-            starting_date = Parameter(
-                name="starting_date",
-                default=datetime.datetime.strftime(datetime.datetime.now(), "%Y-%m-%d"),
-            )
-            end_goal = Parameter(name="end_goal", default=150000)
-            report_data = tasks.mfp_select_daily_report_data(
-                user, usermail, starting_date, end_goal
-            )
+    with Flow(name=flow_name) as progress_report_flow:
+        usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
+        starting_date = Parameter(
+            name="starting_date",
+            default=datetime.datetime.strftime(datetime.datetime.now(), "%Y-%m-%d"),
+        )
+        end_goal = Parameter(name="end_goal", default=150000)
+        num_rows_report_tbl = Parameter(name="num_rows_report_tbl", default=7)
+        report_style = Parameter(name="report_style", default="default")
 
-            report_style = tasks.prepare_report_style("lisk")
-            report_chart = tasks.prepare_report_chart(report_data, report_style)  # noqa
-            report_html = tasks.render_html_email_report(
-                template_name="mfp_daily.jinja2",
-                report_data=report_data,
-                report_style=report_style,
-            )
-            report_subject = tasks.prepare_report_subject(report_data)
-            t = tasks.save_email_report_locally(report_html)  # noqa
-            attachments = [report_chart]
-            r = tasks.send_email_report(  # noqa
-                usermail, report_subject, report_html, attachments
-            )
-        return daily_flow
+        user = User(user, usermail)
+        report_data = tasks.mfp_select_progress_report_data(
+            usermail, starting_date, end_goal
+        )
+        report = tasks.make_report(
+            user, report_data, report_style, end_goal, num_rows_report_tbl
+        )
+        report = tasks.render_progress_report(report)
+        report_chart = tasks.prepare_report_chart(report)  # noqa
+        report_html = tasks.render_html_email_report(report)
+        t = tasks.save_email_report_locally(report_html)  # noqa
+        attachments = [report_chart]
+        r = tasks.send_email_report(report, report_html, attachments)  # noqa
+    return progress_report_flow
 
 
 def get_backup_flow(flow_name: str = None) -> Flow:

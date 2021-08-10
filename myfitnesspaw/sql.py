@@ -193,7 +193,7 @@ VALUES (?, ?, ?, ?)
 
 # substr('XXXJanFebMarAprMayJunJulAugSepOctNovDec', 1 + 3*STRFTIME('%m', g.date), 3)
 
-select_daily_report = """
+select_progress_report = """
 WITH params(username, starting_date, end_goal) AS (SELECT ?, ?, ?)
      ,userstats AS (
         SELECT

@@ -5,7 +5,7 @@ from myfitnesspaw import flows
 
 class TestFlows:
     def test__get_etl_flow__without_passed_user__raises_ValueError(self):
-        with pytest.raises(ValueError, match="An user must be provided for the flow."):
+        with pytest.raises(ValueError, match="An user must be provided for the flow"):
             flows.get_etl_flow(user=None)
 
     def test__get_etl_flow__without_passed_flow_name__applies_default_name(self):
@@ -23,26 +23,22 @@ class TestFlows:
 
         assert flow_name in f.name
 
-    def test__get_report_flow__without_passed_user__raises_ValueError(self):
-        with pytest.raises(ValueError, match="An user must be provided for the flow."):
-            flows.get_report_flow(user=None)
+    def test__get_progress_report_flow__without_passed_user__raises_ValueError(self):
+        with pytest.raises(ValueError, match="An user must be provided for the flow"):
+            flows.get_progress_report_flow(user=None)
 
     def test__get_report_flow__without_passed_flow_name__applies_default_name(self):
         user = "testuser"
-        report_type = "daily"
 
-        f = flows.get_report_flow(user=user, report_type=report_type)
+        f = flows.get_progress_report_flow(user=user)
 
         assert user.upper() in f.name
 
     def test__get_report_flow__with_passed_flow_name__applies_passed_name(self):
         user = "testuser"
         flow_name = "test_flow"
-        report_type = "daily"
 
-        f = flows.get_report_flow(
-            user=user, flow_name=flow_name, report_type=report_type
-        )
+        f = flows.get_progress_report_flow(user=user, flow_name=flow_name)
 
         assert flow_name in f.name
 
