@@ -21,13 +21,13 @@ from . import _utils, flows
 
 
 def run_etl_flow(
-    user: str = None, **kwargs
+    username: str = None, **kwargs
 ) -> Union["prefect.engine.state.State", None]:
     """
     Create an ETL flow for the provided user and execute it locally.
 
     Args:
-       - user (str): The name of the user to have the flow executed for
+       - username (str): The name of the user to have the flow executed for
        - from_date (datetime.date, optional): The starting date (including) of the
          extraction sequence
        - to_date (datetime.date, optional): The ending date (incuding) of the extraction
@@ -38,10 +38,10 @@ def run_etl_flow(
        - State: the state of the flow after the completed run.
 
     Raises:
-       - ValueError: if the `user` keyword argument is not provided
+       - ValueError: if the `username` keyword argument is not provided
     """
 
-    flow = flows.get_etl_flow(user=user)
+    flow = flows.get_etl_flow(username=username)
     # prepare parameters to pass at runtime
     parameters = {}
     if kwargs.get("from_date"):
@@ -56,23 +56,22 @@ def run_etl_flow(
 
 
 def run_report_flow(
-    user: str = None, parameters: dict = {}
+    username: str = None, parameters: dict = {}
 ) -> Union["prefect.engine.state.State", None]:
     """
     Create a report flow for the provided user and execute it locally.
 
     Args:
-       - user (str): The name of the user to have the flow executed for
+       - username (str): The name of the user to have the flow executed for
        - parameters (dict, optional): Parameters for the selected flow type
 
     Returns:
        - State: the state of the flow after the completed run.
 
     Raises:
-       - ValueError: if the `user` keyword argument is not provided
+       - ValueError: if the `username` keyword argument is not provided
     """
-    flow = flows.get_progress_report_flow(user)
-
+    flow = flows.get_progress_report_flow(username=username)
     flow.run_config = _utils.get_local_run_config()
 
     return flow.run(parameters=parameters)
@@ -92,13 +91,13 @@ def run_backup_flow() -> Union["prefect.engine.state.State", None]:
 
 
 def register_etl_flow(
-    user: str = None, project_name: str = None, flow_name: str = None
+    username: str = None, project_name: str = None, flow_name: str = None
 ) -> Union["prefect.engine.state.State", None]:
     """
     Register a MyFitnessPaw ETL Flow to the Prefect Cloud for the provided user.
 
     Args:
-       - user (str): The name of the user to have the flow registered for
+       - username (str): The name of the user to have the flow registered for
        - project_name (str, optional): The name of the Prefect Cloud project that
          will be used to register the created flow. Note: The project must already
          exist in Prefect Cloud or the process will fail.
@@ -109,17 +108,18 @@ def register_etl_flow(
        - State: the state of the flow after the completed run.
 
     Raises:
-       - ValueError: if the `user` keyword argument is not provided
+       - ValueError: if the `username` keyword argument is not provided
        - ValueError: if the `project_name` keyword argument is not provided
     """
 
-    flow = flows.get_etl_flow(user=user, flow_name=flow_name)
+    flow = flows.get_etl_flow(username=username, flow_name=flow_name)
     flow.run_config = _utils.get_local_run_config()
+
     return flow.register(project_name=project_name)
 
 
 def register_report_flow(
-    user: str = None,
+    username: str = None,
     project_name: str = None,
     flow_name: str = None,
     report_type: str = None,
@@ -128,7 +128,7 @@ def register_report_flow(
     Register a MyFitnessPaw report flow to the Prefect Cloud.
 
     Args:
-       - user (str): The name of the user to have the flow registered for
+       - username (str): The name of the user to have the flow registered for
        - project_name (str, optional): The name of the Prefect Cloud project that
          will be used to register the created flow. Note: The project must already
          exist in Prefect Cloud or the process will fail.
@@ -141,11 +141,11 @@ def register_report_flow(
        - State: the state of the flow after the completed run.
 
     Raises:
-       - ValueError: if the `user` keyword argument is not provided
+       - ValueError: if the `username` keyword argument is not provided
        - ValueError: if the `project_name` keyword argument is not provided
     """
     flow = flows.get_report_flow(
-        username=user, report_type=report_type, flow_name=flow_name
+        username=username, report_type=report_type, flow_name=flow_name
     )
     flow.run_config = _utils.get_local_run_config()
 

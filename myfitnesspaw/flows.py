@@ -15,28 +15,28 @@ from . import DB_PATH, _utils, sql, tasks
 
 
 def get_etl_flow(
-    user: str = None,
+    username: str = None,
     flow_name: str = None,
 ) -> Flow:
     """
     Create an ETL flow to extract data from myfitnesspal into the local database.
 
     Args:
-       - user (str): MyFitnessPaw username associated with the created workflow
+       - username (str): MyFitnessPaw username associated with the created workflow
        - flow_name (str, optional): An optional name to be applied to the flow
 
     Returns:
        - prefect.Flow: The created Prefect flow ready to be run
 
     Raises:
-       - ValueError: if the `user` keyword argument is not provided
+       - ValueError: if the `username` keyword argument is not provided
     """
 
-    if not user:
+    if not username:
         raise ValueError("An user must be provided for the flow")
 
     mfp_insertmany = tasks.SQLiteExecuteMany(db=DB_PATH, enforce_fk=True)
-    flow_name = flow_name or f"MyFitnessPaw ETL <{user.upper()}>"
+    flow_name = flow_name or f"MyFitnessPaw ETL <{username.upper()}>"
     with Flow(
         name=flow_name,
         state_handlers=[_utils.slack_fail_notification],
@@ -47,19 +47,19 @@ def get_etl_flow(
             to_date_str=Parameter(name="to_date", default=None),
         )
         measures = Parameter(name="measures", default=["Weight"])
-        username = PrefectSecret(f"MYFITNESSPAL_USERNAME_{user.upper()}")
-        password = PrefectSecret(f"MYFITNESSPAL_PASSWORD_{user.upper()}")
+        usermail = PrefectSecret(f"MYFITNESSPAL_USERNAME_{username.upper()}")
+        password = PrefectSecret(f"MYFITNESSPAL_PASSWORD_{username.upper()}")
         db_exists = tasks.create_mfp_database()
         dates_to_extract = tasks.generate_dates_to_extract(from_date, to_date)
         extracted_days = tasks.get_myfitnesspal_day.map(
             date=dates_to_extract,
-            username=unmapped(username),
+            username=unmapped(usermail),
             password=unmapped(password),
             measures=unmapped(measures),
         )
         serialized_extracted_days = tasks.serialize_myfitnesspal_days(extracted_days)
         mfp_existing_days = tasks.mfp_select_raw_days(
-            username=username,
+            username=usermail,
             dates=dates_to_extract,
             upstream_tasks=[db_exists],
         )
@@ -128,7 +128,20 @@ def get_etl_flow(
     return etl_flow
 
 
-def get_progress_report_flow(username, flow_name=None):
+def get_progress_report_flow(username: str = None, flow_name: str = None) -> Flow:
+    """
+    Get a flow that generates a progress report.
+
+    Args:
+       - username (str): MyFitnessPaw username to be used for flow generation and dispatch
+       - flow_name (str, optional): An optional name to be applied to the flow
+
+    Returns:
+       - prefect.Flow: The created Prefect flow ready to be run
+
+    Raises:
+       - ValueError: if the `username` keyword argument is not provided
+    """
     if not username:
         raise ValueError("An user must be provided for the flow")
 

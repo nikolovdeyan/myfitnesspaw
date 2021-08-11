@@ -29,12 +29,11 @@ from prefect.utilities.tasks import defaults_from_attrs
 
 from . import DB_PATH, TEMPLATES_DIR, sql
 from ._utils import (
-    MaterializedDay,
     MyfitnesspalClientAdapter,
     select_fifo_backups_to_delete,
     try_parse_date_str,
 )
-from .types import ProgressReport, User
+from .types import MaterializedDay, ProgressReport, User
 
 
 class SQLiteExecuteMany(Task):
@@ -129,7 +128,7 @@ class SQLiteExecuteMany(Task):
             conn.commit()
 
 
-class LiskoEmailTask(Task):
+class LiskoEmail(Task):
     def __init__(
         self,
         subject: str = None,
@@ -728,7 +727,7 @@ def render_html_email_report(report: ProgressReport) -> str:
 @task
 def send_email_report(report: ProgressReport, report_html) -> None:
     """Send a prepared report to the provided address."""
-    e = LiskoEmailTask(
+    e = LiskoEmail(
         subject=report.email_subject,
         msg=report_html,
         email_from=report.email_from,

@@ -1,36 +1,70 @@
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
+from myfitnesspal.exercise import Exercise
+from myfitnesspal.meal import Meal
 
 available_styles = {
     "lisk": {
-        "title_bg_color": "#fe8821",
-        "article_bg_color": "#feecd3",
-        "bg0": "#FEECD3",
+        "bg0": "#FEF1E2",
         "bg1": "#FEDBAB",
-        "bg2": "#FEDBAB",
-        "fg0": "#FFB967",
+        "bg2": "#FEC478",
+        "fg0": "#FE9923",
         "fg1": "#FE8821",
-        "fg2": "",
-        "text0": "",
-        "text1": "#3C3A41",
-        "text2": "",
-        "accent": "#21D8FF",
-        "faded0": "#958476",
-        "faded1": "#CCBBAD",
+        "fg2": "#E5741A",
+        "text0": "#827F85",
+        "text1": "#57555C",
+        "text2": "#3C3A41",
+        "accent0": "#21D8FF",
+        "accent1": "#185B66",
+        "gray0": "#DCC09B",
+        "gray1": "#9E8E7D",
         "warning": "#FF3D14",
+        "error": "#FF0000",
+    },
+    "solarized": {
+        "bg0": "#FDF6E3",
+        "bg1": "#EEE8D5",
+        "bg2": "#DBD3BB",
+        "fg0": "#C2BBA5",
+        "fg1": "#A8A28F",
+        "fg2": "#8F8979",
+        "text0": "#586E75",
+        "text1": "#073642",
+        "text2": "#002B36",
+        "accent0": "#268BD2",
+        "accent1": "#2AA198",
+        "gray0": "#93A1A1",
+        "gray1": "#657B83",
+        "warning": "#CB4B16",
+        "error": "#DC322F",
     },
 }
-available_styles["default"] = available_styles.get("lisk")
+available_styles["default"] = available_styles.get("solarized")
+
+
+@dataclass
+class MaterializedDay:
+    """
+    A class to hold the properties from myfitnesspal that we are working with.
+    """
+
+    username: str
+    date: datetime.date
+    meals: List[Meal]
+    exercises: List[Exercise]
+    goals: Dict[str, float]
+    notes: Dict  # currently python-myfitnesspal only scrapes food notes
+    water: float
+    measurements: Dict[str, float]
 
 
 @dataclass
 class Style:
-    title_bg_color: str
-    article_bg_color: str
     bg0: str
     bg1: str
     bg2: str
@@ -40,10 +74,12 @@ class Style:
     text0: str
     text1: str
     text2: str
-    accent: str
-    faded0: str
-    faded1: str
+    accent0: str
+    accent1: str
+    gray0: str
+    gray1: str
     warning: str
+    error: str
 
 
 class User:
@@ -58,8 +94,7 @@ class ProgressReport:
         user: User,
         report_data,
         report_style_name: str = "default",
-        report_template_name: str = "mfp_progress.jinja2",
-        # report_settings ??
+        report_template_name: str = "mfp_progress_report.jinja2",
     ):
         self.user = user
         self.data = report_data.get("data_table", None)
@@ -113,8 +148,18 @@ class ProgressReport:
 
     def get_template_style_dict(self):
         return {
-            "title_bg_color": self.style.title_bg_color,
-            "article_bg_color": self.style.article_bg_color,
+            "title_bg_color": self.style.fg1,
+            "title_text_color": self.style.text2,
+            "article_bg_color": self.style.bg0,
+            "article_text_color": self.style.text2,
+            "table_border_color": self.style.fg1,
+            "table_bg_header": self.style.bg2,
+            "table_bg_color1": self.style.bg0,
+            "table_bg_color2": self.style.bg1,
+            "table_text_color": self.style.text2,
+            "footer_bg_color": self.style.text2,
+            "footer_text_color": self.style.text0,
+            "footer_link_color": self.style.accent0,
         }
 
     def _render_progress_bar_chart(self):
@@ -144,16 +189,16 @@ class ProgressReport:
                     deficit_actual,
                     deficit_remaining,
                 ),
-                "accent",
+                "accent0",
             )
 
         chart_data = {current_date: current_date_data}
         color = list(chart_data.values())[0][1]
         vals = tuple(chart_data.values())[0][0]
         category_colors = [
-            self.style.faded0,
-            self.style.warning if color == "warning" else self.style.accent,
-            self.style.faded1,
+            self.style.gray1,
+            self.style.warning if color == "warning" else self.style.accent0,
+            self.style.gray0,
         ]
         labels = list(chart_data.keys())
         data = np.array(list(vals))

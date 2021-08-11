@@ -8,14 +8,11 @@ Contains helper functions for various tasks.
 
 import datetime
 import json
-from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import myfitnesspal
 import prefect
 import requests
-from myfitnesspal.exercise import Exercise
-from myfitnesspal.meal import Meal
 from prefect.core import Flow, Task
 from prefect.engine.state import State
 from prefect.run_configs import LocalRun
@@ -24,6 +21,7 @@ from prefect.tasks.secrets import PrefectSecret
 from templates import slack_notifications
 
 from . import MFP_CONFIG_PATH, PYTHONPATH, ROOT_DIR
+from .types import MaterializedDay
 
 
 def custom_terminal_state_handler(
@@ -139,22 +137,6 @@ def get_local_run_config() -> LocalRun:
             "PYTHONPATH": PYTHONPATH,
         },
     )
-
-
-@dataclass
-class MaterializedDay:
-    """
-    A class to hold the properties from myfitnesspal that we are working with.
-    """
-
-    username: str
-    date: datetime.date
-    meals: List[Meal]
-    exercises: List[Exercise]
-    goals: Dict[str, float]
-    notes: Dict  # currently python-myfitnesspal only scrapes food notes
-    water: float
-    measurements: Dict[str, float]
 
 
 class MyfitnesspalClientAdapter:

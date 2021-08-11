@@ -52,62 +52,60 @@
             {% endblock header %}
             <!-- END Header Row -->
 
-            <!-- Title Row -->
-             {% block title %}
-	          <tr class="title-row">
-		          <td bgcolor="#fec478" padding="0", margin="0">
-			          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
-				          <tr>
-					          <td style="text-align: center; font-weight: bold; color: #3c3a41; font-family: Roboto Slab, serif; font-size: 22px; line-height: 24px; padding: 15px 0 0 0;">
-                      <p style="margin: 0;"> Report Title </p>
-					          </td>
-				          </tr>
-				          <tr>
-					          <td style="text-align: center; color: #57555c; font-family: Roboto Slab, serif; font-size: 18px; line-height: 20px; padding: 10px 0 10px 0;">
-                      <p style="margin: 0;"> Subtitle, if needed. </p>
-                      <p style="margin: 0;"> (Image can be used in place of text)</p>
-					          </td>
-				          </tr>
-			          </table>
-		          </td>
-	          </tr>
-              {% endblock title %}
+<!-- Report Title Row -->
+{% block title %}
+<tr class="title-row">
+	<td bgcolor="#fec478" padding="0", margin="0">
+		<table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+			<tr>
+				<td style="text-align: center; font-weight: bold; color: #3c3a41; font-family: Roboto Slab, serif; font-size: 22px; line-height: 24px; padding: 15px 0 0 0;">
+          <p style="margin: 0;"> Report Title </p>
+				</td>
+			</tr>
+			<tr>
+				<td style="text-align: center; color: #57555c; font-family: Roboto Slab, serif; font-size: 18px; line-height: 20px; padding: 10px 0 10px 0;">
+          <p style="margin: 0;"> Subtitle, if needed. </p>
+          <p style="margin: 0;"> (Image can be used in place of text)</p>
+				</td>
+			</tr>
+		</table>
+	</td>
+</tr>
+{% endblock title %}
 
+<!-- Article Row -->
+{% block article %}
+<tr class="article-row">
+  <td style="background-color: #ffffff; padding: 20px;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+      <tr>
+        <td style="height: 400px; vertical-align: top;">
+          <p style="margin: 0; display: block;"> Space for article content. </p>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>
+{% endblock article %}
 
-            <!-- Article Row -->
-              {% block article %}
+<!-- Footer Row -->
+{% block footer %}
+<tr class="footer-row">
+  <td bgcolor="#3c3a41" style="max-height: 80px;">
+    <div style="padding: 10px;">
+      <p>Footer</p>
+    </div>
+  </td>
+</tr>
+{% endblock footer %}
 
-	          <tr class="article-row">
-		          <td style="background-color: #ffffff; padding: 20px;">
-			          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
-				          <tr>
-					          <td style="height: 400px; vertical-align: top;">
-                      <p style="margin: 0; display: block;"> Space for article content. </p>
-					          </td>
-				          </tr>
-			          </table>
-		          </td>
-	          </tr>
-              {% endblock article %}
+<!-- Container Table END -->
+</table>
 
-            <!-- Footer Row -->
-              {% block footer %}
-	          <tr class="footer-row">
-		          <td bgcolor="#3c3a41" style="max-height: 80px;">
-                <div style="padding: 10px;">
-                  <p>Footer</p>
-                </div>
-		          </td>
-	          </tr>
-              {% endblock footer %}
+</td>
+</tr>
+</table>
 
-          <!-- Container Table END -->
-          </table>
-
-			  </td>
-		  </tr>
-	  </table>
-
-  </body>
+</body>
 
 </html>
