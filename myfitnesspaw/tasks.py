@@ -15,14 +15,11 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from pathlib import Path
 from typing import Any, List, Tuple, Union, cast
 
 import dropbox
 import jinja2
 import jsonpickle
-import matplotlib.pyplot as plt
-import numpy as np
 import prefect
 from dropbox.files import WriteMode
 from myfitnesspal.meal import Meal
@@ -37,7 +34,7 @@ from ._utils import (
     select_fifo_backups_to_delete,
     try_parse_date_str,
 )
-from .types import ProgressReport
+from .types import ProgressReport, User
 
 
 class SQLiteExecuteMany(Task):
@@ -689,139 +686,55 @@ def mfp_select_progress_report_data(
     user_email: str,
     starting_date: str,
     end_goal: int,
+    num_rows_report_tbl: int,
 ) -> dict:
     with closing(sqlite3.connect(DB_PATH)) as conn, closing(conn.cursor()) as c:
         c.execute("PRAGMA foreign_keys = YES;")
         c.execute(sql.select_progress_report, (user_email, starting_date, end_goal))
-        report_data = c.fetchall()
+        data_table = c.fetchall()
+
+    report_data = {
+        "starting_date": starting_date,
+        "end_goal": end_goal,
+        "data_table": data_table,
+        "num_rows_report_tbl": num_rows_report_tbl,
+    }
 
     return report_data
 
 
 @task
-def make_report(user, report_data, report_style, end_goal, num_rows_report_tbl):
-    report = ProgressReport(user, report_data, report_style)
-    report.end_goal = end_goal
-    report.num_rows_report_tbl = num_rows_report_tbl
-    return report
+def make_report(user, report_data, report_style):
+    return ProgressReport(user, report_data, report_style)
 
 
 @task
-def render_progress_report(report) -> dict:
-    """
-    Return a dictionary containing the data to populate the experimental report.
-    """
-    report_data = report.data
-    user = report.user
-    end_goal = report.end_goal
-    num_rows_report_tbl = report.num_rows_report_tbl
-
-    report_window_data = [row for row in report_data if row[4] is not None]
-    yesterday_str = (datetime.date.today() - datetime.timedelta(days=1)).strftime(
-        "%d-%b-%Y"
-    )
-
-    # if report starts from today or yesterday has no entered info, return None
-    if not report_window_data or report_window_data[-1][1] != yesterday_str:
-        return {}
-
-    nutrition_tbl_header = [
-        "day",
-        "date",
-        "cal target",
-        "deficit target",
-        "deficit actual",
-        "running deficit",
-    ]
-    yesterday_tbl_row = report_window_data[-1]
-    chart_data = calculate_chart_data(end_goal, yesterday_tbl_row)
-    highlight_row_data = None
-    current_day_number = yesterday_tbl_row[0]
-    nutrition_tbl_data = report_window_data[(num_rows_report_tbl * -1) :]
-
-    report.subject = f"MyfitnessPaw Progress Report (Day {current_day_number})"
-    report.title = f"MyFitnessPaw Progress Report (Day {current_day_number})"
-    report.userr = f"{user.username}".capitalize()
-    report.current_day = current_day_number
-    report.nutrition_tbl_header = nutrition_tbl_header
-    report.nutrition_tbl_data = nutrition_tbl_data
-    report.chart_data = chart_data
-    report.highlight_row_data = highlight_row_data
-    report.generated_ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    report.datanew = {
-        "title": report.title,
-        "user": report.userr,
-        "today": datetime.datetime.now().strftime("%d %b %Y"),
-        "nutrition_tbl_header": report.nutrition_tbl_header,
-        "nutrition_tbl_data": report.nutrition_tbl_data,
-        "generated_ts": report.generated_ts,
-    }
-
-    return report
-
-
-@task
-def prepare_report_chart(report):
-    chart_data = report.chart_data
-    color = list(chart_data.values())[0][1]
-    vals = tuple(chart_data.values())[0][0]
-    category_colors = [
-        report.style.faded0,
-        report.style.warning if color == "warning" else report.style.accent,
-        report.style.faded1,
-    ]
-    labels = list(chart_data.keys())
-    data = np.array(list(vals))
-    data_cum = data.cumsum()
-    fig = plt.figure(figsize=(5.5, 0.7))
-    ax = fig.add_subplot(111)
-
-    fig.set_facecolor("#00000000")
-    ax.set_axis_off()
-    ax.set_ymargin(0.5)
-    ax.set_xlim(0, np.sum(data, axis=0).max())
-    goals_bar = ax.barh(  # noqa
-        labels,
-        width=data,
-        left=data_cum[:] - data,
-        color=category_colors,
-    )
-
-    our_dir = Path().absolute()
-    chart_dir = our_dir.joinpath(Path("tmp"))
-    chart_dir.mkdir(exist_ok=True)
-    chart_file = chart_dir.joinpath(Path("temp.png"))
-
-    plt.savefig(chart_file)
-    return chart_file
+def get_user(username, usermail):
+    return User(username, usermail)
 
 
 @task
 def render_html_email_report(report: ProgressReport) -> str:
     """Render a Jinja2 HTML template containing the report to send."""
-    logger = prefect.context.get("logger")
-    logger.info(f"report.title: {report.title}")
-    logger.info(f"report.nutrition_tbl_data: {report.nutrition_tbl_data}")
-
     template_loader = jinja2.FileSystemLoader(searchpath=TEMPLATES_DIR)
     template_env = jinja2.Environment(loader=template_loader)
     report_template = template_env.get_template(report.template)
-    report_html = report_template.render(data=report.datanew, style=report.style)
+    data = report.get_template_data_dict()
+    style = report.get_template_style_dict()
+    report_html = report_template.render(data=data, style=style)
     return report_html
 
 
 @task
-def send_email_report(report: ProgressReport, report_html, attachments) -> None:
+def send_email_report(report: ProgressReport, report_html) -> None:
     """Send a prepared report to the provided address."""
     e = LiskoEmailTask(
-        subject=report.subject,
+        subject=report.email_subject,
         msg=report_html,
-        email_from="Lisko Home Automation",
-        attachments=attachments,
+        email_from=report.email_from,
+        attachments=report.attachments,
     )
-    user = report.user
-    email = user.email
+    email = report.email_to
 
     e.run(email_to=email)
 
@@ -876,34 +789,3 @@ def apply_backup_rotation_scheme(
         res = dbx.files_delete(f"{dbx_mfp_dir}/{filename}")
         deleted.append((res.name, res.content_hash))
     return deleted
-
-
-def calculate_chart_data(end_goal, report_data):
-    current_date = report_data[1]
-    deficit_actual = report_data[4]
-    deficit_accumulated = report_data[5]
-
-    if deficit_actual < 0:
-        deficit_remaining = end_goal - deficit_accumulated + abs(deficit_actual)
-        current_date_data = (
-            (
-                deficit_accumulated - abs(deficit_actual),
-                abs(deficit_actual),
-                deficit_remaining + deficit_actual,
-            ),
-            "warning",
-        )
-
-    else:
-        deficit_remaining = end_goal - deficit_accumulated - deficit_actual
-        current_date_data = (
-            (
-                deficit_accumulated,
-                deficit_actual,
-                deficit_remaining,
-            ),
-            "accent",
-        )
-
-    chart_data = {current_date: current_date_data}
-    return chart_data

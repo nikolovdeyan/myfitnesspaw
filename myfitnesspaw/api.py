@@ -71,7 +71,7 @@ def run_report_flow(
     Raises:
        - ValueError: if the `user` keyword argument is not provided
     """
-    flow = flows.get_progress_report_flow(user=user)
+    flow = flows.get_progress_report_flow(user)
 
     flow.run_config = _utils.get_local_run_config()
 
@@ -145,7 +145,7 @@ def register_report_flow(
        - ValueError: if the `project_name` keyword argument is not provided
     """
     flow = flows.get_report_flow(
-        user=user, report_type=report_type, flow_name=flow_name
+        username=user, report_type=report_type, flow_name=flow_name
     )
     flow.run_config = _utils.get_local_run_config()
 
