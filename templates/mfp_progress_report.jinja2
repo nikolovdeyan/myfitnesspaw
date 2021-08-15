@@ -35,7 +35,7 @@
 				<tr>
 					<td style="vertical-align: top; font-family: Roboto, sans-serif; font-size: 14px; line-height: 22px; padding: 10px 0 0 0;">
             <p style="margin: 0; display: block;"> Hello, {{ data.user }}!</p>
-            <p style="margin: 0; display: block;"> This is your daily MyFitnessPaw report for <strong>{{ data.today }}</strong>.
+            <p style="margin: 0; display: block;"> This is your daily MyFitnessPaw progress report for <strong>{{ data.today }}</strong>.
 					</td>
 				</tr>
         
@@ -46,29 +46,36 @@
 
           <!-- Data table  -->
           <table width="100%" style="border-collapse: collapse;">
+
+            <!-- Chart title -->
             <tr>
-              <td colspan="6" style="background-color: {{ style.title_bg_color }}; color: {{ style.title_text_color }}; font-family: 'Roboto Condensed', sans-serif; font-size: 18px; line-height: 22px; padding: 10px 5px 10px 5px;">Goals tracking:</td>
+              <td colspan="6" style="background-color: {{ style.title_bg_color }}; color: {{ style.title_text_color }}; font-family: 'Roboto Condensed', sans-serif; font-size: 18px; line-height: 20px; padding: 10px 5px 10px 5px;">Progress chart:</td>
             </tr>
 
-          <!-- Chart row -->
-          <tr>
-            <td colspan="6">
-              <img id="1" src="cid:test.png@lisko.id" />
-            </td>
-          </tr>
-          
-          <tr>
-            {% for cell in data.nutrition_tbl_header %}
-              <th style="background-color: {{ style.table_bg_header }}; color: {{ style.table_text_color }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px;">{{ cell }}</th>
-            {% endfor %}
-          </tr>
-          {% for row in data.nutrition_tbl_data %}
+            <!-- Chart -->
             <tr>
-              {% for cell in row %}
-                <td style="background-color: {{ loop.cycle(style.table_bg_color1, style.table_bg_color2) }}; color: {{ style.table_text_color }}; font-family: 'Roboto Condensed', sans-serif; font-size: 14px; line-height: 14px; padding: 4px 0 4px 10px; border-bottom: 1px solid {{ style.table_border_color }};">{{ cell }}</td>
+              <td colspan="6">
+                <img id="1" src="cid:test.png@lisko.id" />
+              </td>
+            </tr>
+          
+
+            <!-- Table title -->
+            <tr>
+              <td colspan="6" style="background-color: {{ style.title_bg_color }}; color: {{ style.title_text_color }}; font-family: 'Roboto Condensed', sans-serif; font-size: 18px; line-height: 20px; padding: 10px 5px 10px 5px;">Progress details:</td>
+            </tr>
+            <tr>
+              {% for cell in data.nutrition_tbl_header %}
+                <th style="background-color: {{ style.table_bg_header }}; color: {{ style.table_text_color }}; font-family: 'Roboto Condensed', sans-serif; text-align: center; font-size: 13px; line-height: 13px; padding: 4px 0 4px 0; border-bottom: 2px solid {{ style.table_border_color }}">{{ cell }}</th>
               {% endfor %}
             </tr>
-          {% endfor %}
+            {% for row in data.nutrition_tbl_data %}
+              <tr>
+                {% for cell in row %}
+                  <td style="background-color: {{ loop.cycle(style.table_bg_color1, style.table_bg_color2) }}; color: {{ style.table_text_color }}; font-family: 'Roboto Condensed', sans-serif; text-align: right; font-size: 13px; line-height: 13px; padding: 4px 5px 4px 0; border-bottom: 1px solid {{ style.table_border_color }};">{{ cell }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
 
           </table>
           </td>
@@ -102,13 +109,3 @@
 	</tr>
 {% endblock footer %}
 <!-- Container Table END -->
-
-</table>
-
-</td>
-</tr>
-</table>
-
-</body>
-
-</html>

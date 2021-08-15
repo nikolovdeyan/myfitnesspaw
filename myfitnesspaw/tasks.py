@@ -134,7 +134,7 @@ class LiskoEmail(Task):
         subject: str = None,
         msg: str = None,
         email_to: str = None,
-        email_from: str = "notifications@prefect.io",
+        email_from: str = "lisko.reporter@gmail.com",
         smtp_server: str = "smtp.gmail.com",
         smtp_port: int = 465,
         smtp_type: str = "SSL",
@@ -717,7 +717,7 @@ def render_html_email_report(report: ProgressReport) -> str:
     """Render a Jinja2 HTML template containing the report to send."""
     template_loader = jinja2.FileSystemLoader(searchpath=TEMPLATES_DIR)
     template_env = jinja2.Environment(loader=template_loader)
-    report_template = template_env.get_template(report.template)
+    report_template = template_env.get_template(report.template_name)
     data = report.get_template_data_dict()
     style = report.get_template_style_dict()
     report_html = report_template.render(data=data, style=style)

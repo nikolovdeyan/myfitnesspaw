@@ -8,43 +8,7 @@ import numpy as np
 from myfitnesspal.exercise import Exercise
 from myfitnesspal.meal import Meal
 
-available_styles = {
-    "lisk": {
-        "bg0": "#FEF1E2",
-        "bg1": "#FEDBAB",
-        "bg2": "#FEC478",
-        "fg0": "#FE9923",
-        "fg1": "#FE8821",
-        "fg2": "#E5741A",
-        "text0": "#827F85",
-        "text1": "#57555C",
-        "text2": "#3C3A41",
-        "accent0": "#21D8FF",
-        "accent1": "#185B66",
-        "gray0": "#DCC09B",
-        "gray1": "#9E8E7D",
-        "warning": "#FF3D14",
-        "error": "#FF0000",
-    },
-    "solarized": {
-        "bg0": "#FDF6E3",
-        "bg1": "#EEE8D5",
-        "bg2": "#DBD3BB",
-        "fg0": "#C2BBA5",
-        "fg1": "#A8A28F",
-        "fg2": "#8F8979",
-        "text0": "#586E75",
-        "text1": "#073642",
-        "text2": "#002B36",
-        "accent0": "#268BD2",
-        "accent1": "#2AA198",
-        "gray0": "#93A1A1",
-        "gray1": "#657B83",
-        "warning": "#CB4B16",
-        "error": "#DC322F",
-    },
-}
-available_styles["default"] = available_styles.get("solarized")
+from . import styles
 
 
 @dataclass
@@ -82,19 +46,21 @@ class Style:
     error: str
 
 
+@dataclass
 class User:
-    def __init__(self, username, email):
-        self.username = username
-        self.email = email
+    username: str
+    email: str
 
 
 class ProgressReport:
+    template_name: str = "mfp_progress_report.jinja2"
+    email_from: str = "Lisko Home Automation"
+
     def __init__(
         self,
         user: User,
         report_data,
         report_style_name: str = "default",
-        report_template_name: str = "mfp_progress_report.jinja2",
     ):
         self.user = user
         self.data = report_data.get("data_table", None)
@@ -103,12 +69,10 @@ class ProgressReport:
         self.email_subject = (
             f"MyfitnessPaw Progress Report (Day {self.current_day_number})"
         )
-        self.email_from = "Lisko Home Automation"
-        self.email_to = user.email
+        self.email_to = "lisko.reporter@gmail.com"
         self.end_goal = report_data.get("end_goal", None)
-        self.template = report_template_name
         self.num_rows_report_tbl = report_data.get("num_rows_report_tbl", 7)
-        style_pallete = available_styles.get(report_style_name)
+        style_pallete = styles.COLOR_PALETTES.get(report_style_name)
         self.style = Style(**style_pallete)
         self.attachments = [self._render_progress_bar_chart()]
 
@@ -154,8 +118,8 @@ class ProgressReport:
             "article_text_color": self.style.text2,
             "table_border_color": self.style.fg1,
             "table_bg_header": self.style.bg2,
-            "table_bg_color1": self.style.bg0,
-            "table_bg_color2": self.style.bg1,
+            "table_bg_color1": self.style.bg1,
+            "table_bg_color2": self.style.bg2,
             "table_text_color": self.style.text2,
             "footer_bg_color": self.style.text2,
             "footer_text_color": self.style.text0,
@@ -185,7 +149,7 @@ class ProgressReport:
             deficit_remaining = self.end_goal - deficit_accumulated - deficit_actual
             current_date_data = (
                 (
-                    deficit_accumulated,
+                    deficit_accumulated - deficit_actual,
                     deficit_actual,
                     deficit_remaining,
                 ),
@@ -230,8 +194,11 @@ class ProgressReport:
         # row[4] is the deficit actual for yesterday
         # we skip days where actual deficit is NULL when we prepare the table
         report_window_data = [row for row in self.data if row[4] is not None]
-        # if report starts from today or yesterday has no entered info, return None
+        # if report starts from today or yesterday has no entered info:
         if not report_window_data or report_window_data[-1][1] != yesterday_str:
             return {}
         nutrition_tbl_data = report_window_data[(self.num_rows_report_tbl * -1) :]
         return nutrition_tbl_data
+
+    def render(self):
+        pass
