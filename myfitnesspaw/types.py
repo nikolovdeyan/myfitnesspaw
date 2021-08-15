@@ -69,7 +69,7 @@ class ProgressReport:
         self.email_subject = (
             f"MyfitnessPaw Progress Report (Day {self.current_day_number})"
         )
-        self.email_to = "lisko.reporter@gmail.com"
+        self.email_to = user.email
         self.end_goal = report_data.get("end_goal", None)
         self.num_rows_report_tbl = report_data.get("num_rows_report_tbl", 7)
         style_pallete = styles.COLOR_PALETTES.get(report_style_name)

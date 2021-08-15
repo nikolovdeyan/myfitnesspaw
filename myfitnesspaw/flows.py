@@ -11,7 +11,7 @@ from prefect import Flow, unmapped
 from prefect.core import Parameter
 from prefect.tasks.secrets import PrefectSecret
 
-from . import DB_PATH, _utils, sql, tasks
+from . import DB_PATH, sql, tasks
 
 
 def get_etl_flow(
@@ -37,11 +37,7 @@ def get_etl_flow(
 
     mfp_insertmany = tasks.SQLiteExecuteMany(db=DB_PATH, enforce_fk=True)
     flow_name = flow_name or f"MyFitnessPaw ETL <{username.upper()}>"
-    with Flow(
-        name=flow_name,
-        state_handlers=[_utils.slack_fail_notification],
-        terminal_state_handler=_utils.custom_terminal_state_handler,
-    ) as etl_flow:
+    with Flow(name=flow_name) as etl_flow:
         from_date, to_date = tasks.prepare_extraction_start_end_dates(
             from_date_str=Parameter(name="from_date", default=None),
             to_date_str=Parameter(name="to_date", default=None),
@@ -181,11 +177,7 @@ def get_backup_flow(flow_name: str = None) -> Flow:
 
     flow_name = flow_name or "MyFitnessPaw DB Backup"
 
-    with Flow(
-        flow_name,
-        state_handlers=[_utils.slack_fail_notification],
-        terminal_state_handler=_utils.custom_terminal_state_handler,
-    ) as backup_flow:
+    with Flow(flow_name) as backup_flow:
         dbx_mfp_dir = prefect.config.myfitnesspaw.backup.dbx_backup_dir
         dbx_token = PrefectSecret("MYFITNESSPAW_DROPBOX_ACCESS_TOKEN")
         backup_result = tasks.make_dropbox_backup(dbx_token, dbx_mfp_dir)  # noqa
