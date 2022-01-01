@@ -704,7 +704,12 @@ def mfp_select_progress_report_data(
 
 @task
 def make_report(user, report_data, report_style):
-    return ProgressReport(user, report_data, report_style)
+    try:
+        report = ProgressReport(user, report_data, report_style)
+    except KeyError as e:
+        raise Exception("report_data: \n{}".format(report_data)) from e
+
+    return report
 
 
 @task
