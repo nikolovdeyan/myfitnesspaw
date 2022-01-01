@@ -71,7 +71,7 @@ def run_report_flow(
     Raises:
        - ValueError: if the `username` keyword argument is not provided
     """
-    flow = flows.get_progress_report_flow(username=username)
+    flow = flows.get_report_flow(username=username)
     flow.run_config = _utils.get_local_run_config()
 
     return flow.run(parameters=parameters)
@@ -122,7 +122,6 @@ def register_report_flow(
     username: str = None,
     project_name: str = None,
     flow_name: str = None,
-    report_type: str = None,
 ) -> Union["prefect.engine.state.State", None]:
     """
     Register a MyFitnessPaw report flow to the Prefect Cloud.
@@ -134,8 +133,6 @@ def register_report_flow(
          exist in Prefect Cloud or the process will fail.
        - flow_name (str, optional): An optional name that will be used to register
          the created flow. If not provided a default name is applied.
-       - report_type(str, optional): The type of report to register. Note: Currently
-         only the weekly report is available and this parameter is not used.
 
     Returns:
        - State: the state of the flow after the completed run.
@@ -145,7 +142,7 @@ def register_report_flow(
        - ValueError: if the `project_name` keyword argument is not provided
     """
     flow = flows.get_report_flow(
-        username=username, report_type=report_type, flow_name=flow_name
+        username=username, flow_name=flow_name
     )
     flow.run_config = _utils.get_local_run_config()
 

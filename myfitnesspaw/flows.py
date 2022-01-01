@@ -124,7 +124,7 @@ def get_etl_flow(
     return etl_flow
 
 
-def get_progress_report_flow(username: str = None, flow_name: str = None) -> Flow:
+def get_report_flow(username: str = None, flow_name: str = None) -> Flow:
     """
     Get a flow that generates a progress report.
 
